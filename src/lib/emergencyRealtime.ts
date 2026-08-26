@@ -1,18 +1,53 @@
-import { EmergencyAlert } from './types';
+import { EmergencyAlert, V2VVoiceMessage } from './types';
 import { notificationService } from './notificationService';
+import { supabase } from './supabase';
 
 type AlertListener = (alert: EmergencyAlert) => void;
 type AckListener = (alertId: string, shipId: string) => void;
+type VoiceListener = (voiceMsg: V2VVoiceMessage) => void;
 
 class EmergencyRealtimeNetwork {
   private ws: WebSocket | null = null;
   private currentShipId: string = '123456789012';
   private alertListeners: AlertListener[] = [];
   private ackListeners: AckListener[] = [];
-  private isConnected: boolean = false;
+  private voiceListeners: VoiceListener[] = [];
   private broadcastChannel: BroadcastChannel | null = null;
+  private supabaseChannel: any = null;
 
   constructor() {
+    // 1. Initialize Supabase Cloud Realtime Channel for Global Cross-Laptop Broadcasts
+    try {
+      this.supabaseChannel = supabase.channel('blueguard_global_maritime_network', {
+        config: { broadcast: { self: true } }
+      });
+
+      this.supabaseChannel
+        .on('broadcast', { event: 'EMERGENCY_ALERT' }, (payload: any) => {
+          console.log('[SUPABASE REALTIME] Emergency alert received from remote ship:', payload.payload);
+          if (payload?.payload) {
+            this.notifyAlertListeners(payload.payload);
+          }
+        })
+        .on('broadcast', { event: 'ALERT_ACKNOWLEDGED' }, (payload: any) => {
+          if (payload?.payload) {
+            this.notifyAckListeners(payload.payload.alert_id, payload.payload.acknowledged_by);
+          }
+        })
+        .on('broadcast', { event: 'V2V_VOICE_DISPATCH' }, (payload: any) => {
+          console.log('[SUPABASE REALTIME] V2V Voice dispatch received:', payload.payload);
+          if (payload?.payload) {
+            this.notifyVoiceListeners(payload.payload);
+          }
+        })
+        .subscribe((status: string) => {
+          console.log('[SUPABASE REALTIME CHANNEL STATUS]', status);
+        });
+    } catch (err) {
+      console.warn('[SUPABASE REALTIME INIT WARN]', err);
+    }
+
+    // 2. Initialize local Browser BroadcastChannel as fast local tab fallback
     if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
       this.broadcastChannel = new BroadcastChannel('blueguard_emergency_network');
       this.broadcastChannel.onmessage = (event) => {
@@ -21,6 +56,8 @@ class EmergencyRealtimeNetwork {
           this.notifyAlertListeners(payload);
         } else if (type === 'ALERT_ACKNOWLEDGED') {
           this.notifyAckListeners(payload.alert_id, payload.acknowledged_by);
+        } else if (type === 'V2V_VOICE_DISPATCH') {
+          this.notifyVoiceListeners(payload);
         }
       };
     }
@@ -32,9 +69,7 @@ class EmergencyRealtimeNetwork {
 
     try {
       this.ws = new WebSocket(`${wsUrl}/ws/emergency/${shipId}`);
-
       this.ws.onopen = () => {
-        this.isConnected = true;
         console.log(`[BLUEGUARD REALTIME] Connected to Emergency Network as Ship ${shipId}`);
       };
 
@@ -45,27 +80,18 @@ class EmergencyRealtimeNetwork {
             this.notifyAlertListeners(data.payload);
           } else if (data.type === 'ALERT_ACKNOWLEDGED') {
             this.notifyAckListeners(data.payload.alert_id, data.payload.acknowledged_by);
+          } else if (data.type === 'V2V_VOICE_DISPATCH') {
+            this.notifyVoiceListeners(data.payload);
           }
         } catch (err) {
           console.warn('WS message parse error:', err);
         }
       };
-
-      this.ws.onerror = () => {
-        this.isConnected = false;
-        console.warn('[BLUEGUARD REALTIME] WebSocket offline. Using local BroadcastChannel cross-tab mesh.');
-      };
-
-      this.ws.onclose = () => {
-        this.isConnected = false;
-      };
-    } catch (e) {
-      this.isConnected = false;
-    }
+    } catch (e) {}
   }
 
   public broadcastEmergency(alert: EmergencyAlert) {
-    // 1. Send instant push notification to NTFY channel & FormSubmit email to higher official (trikysaran5721@gmail.com)
+    // 1. Dispatch push notification to NTFY mobile channel & official email (trikysaran5721@gmail.com)
     notificationService.dispatchOfficialAlerts({
       ship_id: alert.sender_ship_id,
       sender_name: alert.sender_name || 'Captain',
@@ -76,7 +102,24 @@ class EmergencyRealtimeNetwork {
       timestamp: alert.timestamp || new Date().toLocaleTimeString()
     });
 
-    // 2. Try WebSocket
+    // 2. Broadcast across Supabase Realtime to ALL connected laptops globally
+    if (this.supabaseChannel) {
+      this.supabaseChannel.send({
+        type: 'broadcast',
+        event: 'EMERGENCY_ALERT',
+        payload: alert
+      }).catch((err: any) => console.warn('Supabase broadcast send err:', err));
+    }
+
+    // 3. Broadcast to local BroadcastChannel mesh
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage({
+        type: 'EMERGENCY_ALERT_RECEIVED',
+        payload: alert
+      });
+    }
+
+    // 4. Send via WebSocket if connected
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({
@@ -86,15 +129,7 @@ class EmergencyRealtimeNetwork {
       );
     }
 
-    // 3. BroadcastChannel cross-tab fallback (Instant local browser mesh to all open ships)
-    if (this.broadcastChannel) {
-      this.broadcastChannel.postMessage({
-        type: 'EMERGENCY_ALERT_RECEIVED',
-        payload: alert
-      });
-    }
-
-    // 4. Fallback backend HTTP POST
+    // 5. Fallback backend HTTP POST
     const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     fetch(`${apiUrl}/api/tools/emergency`, {
       method: 'POST',
@@ -103,7 +138,44 @@ class EmergencyRealtimeNetwork {
     }).catch(() => {});
   }
 
+  public broadcastV2VVoiceMessage(voiceMsg: V2VVoiceMessage) {
+    // 1. Broadcast via Supabase Realtime to all laptops
+    if (this.supabaseChannel) {
+      this.supabaseChannel.send({
+        type: 'broadcast',
+        event: 'V2V_VOICE_DISPATCH',
+        payload: voiceMsg
+      }).catch(() => {});
+    }
+
+    // 2. Local tab mesh fallback
+    if (this.broadcastChannel) {
+      this.broadcastChannel.postMessage({
+        type: 'V2V_VOICE_DISPATCH',
+        payload: voiceMsg
+      });
+    }
+
+    // 3. WS Fallback
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(
+        JSON.stringify({
+          type: 'V2V_VOICE_DISPATCH',
+          payload: voiceMsg
+        })
+      );
+    }
+  }
+
   public acknowledgeAlert(alertId: string, shipId: string) {
+    if (this.supabaseChannel) {
+      this.supabaseChannel.send({
+        type: 'broadcast',
+        event: 'ALERT_ACKNOWLEDGED',
+        payload: { alert_id: alertId, acknowledged_by: shipId }
+      }).catch(() => {});
+    }
+
     if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       this.ws.send(
         JSON.stringify({
@@ -129,15 +201,21 @@ class EmergencyRealtimeNetwork {
     this.ackListeners.push(listener);
   }
 
+  public onV2VVoiceReceived(listener: VoiceListener) {
+    this.voiceListeners.push(listener);
+  }
+
   private notifyAlertListeners(alert: EmergencyAlert) {
-    // Do not trigger alarm on the sender's own UI if it came from them
-    if (alert.sender_ship_id !== this.currentShipId) {
-      this.alertListeners.forEach((fn) => fn(alert));
-    }
+    // Trigger alarm on all ships (even if same ship ID for testing or different ship IDs)
+    this.alertListeners.forEach((fn) => fn(alert));
   }
 
   private notifyAckListeners(alertId: string, shipId: string) {
     this.ackListeners.forEach((fn) => fn(alertId, shipId));
+  }
+
+  private notifyVoiceListeners(voiceMsg: V2VVoiceMessage) {
+    this.voiceListeners.forEach((fn) => fn(voiceMsg));
   }
 }
 

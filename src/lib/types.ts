@@ -164,6 +164,17 @@ export interface EmergencyAlert {
   acknowledged?: boolean;
 }
 
+export interface V2VVoiceMessage {
+  id: string;
+  sender_ship_id: string;
+  sender_name: string;
+  audio_url: string;
+  duration_sec: number;
+  timestamp: string;
+  channel: string;
+  note?: string;
+}
+
 export interface TravelTrip {
   id: string;
   ship_id: string;

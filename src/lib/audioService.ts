@@ -4,6 +4,7 @@ class AudioService {
   private audioCtx: AudioContext | null = null;
   private isAlarmPlaying = false;
   private activeOscillators: OscillatorNode[] = [];
+  private alarmInterval: any = null;
   private speechSynth: SpeechSynthesis | null = null;
 
   constructor() {
@@ -44,49 +45,55 @@ class AudioService {
     this.stopEmergencyAlarm();
     this.isAlarmPlaying = true;
 
-    try {
-      const now = this.audioCtx.currentTime;
+    const playSirenPulse = () => {
+      if (!this.audioCtx || !this.isAlarmPlaying) return;
+      try {
+        const now = this.audioCtx.currentTime;
 
-      // High-low dual tone siren sound generator
-      const osc1 = this.audioCtx.createOscillator();
-      const osc2 = this.audioCtx.createOscillator();
-      const gain = this.audioCtx.createGain();
+        const osc1 = this.audioCtx.createOscillator();
+        const osc2 = this.audioCtx.createOscillator();
+        const gain = this.audioCtx.createGain();
 
-      osc1.type = 'sawtooth';
-      osc2.type = 'square';
+        osc1.type = 'sawtooth';
+        osc2.type = 'square';
 
-      // Modulate frequency to create alarming siren pulse
-      osc1.frequency.setValueAtTime(880, now); // A5
-      osc1.frequency.linearRampToValueAtTime(440, now + 0.4);
-      osc1.frequency.linearRampToValueAtTime(880, now + 0.8);
+        // Loud dual-tone maritime emergency siren frequencies (960Hz / 480Hz)
+        osc1.frequency.setValueAtTime(960, now);
+        osc1.frequency.linearRampToValueAtTime(480, now + 0.4);
+        osc1.frequency.linearRampToValueAtTime(960, now + 0.8);
 
-      osc2.frequency.setValueAtTime(440, now);
-      osc2.frequency.linearRampToValueAtTime(220, now + 0.4);
-      osc2.frequency.linearRampToValueAtTime(440, now + 0.8);
+        osc2.frequency.setValueAtTime(480, now);
+        osc2.frequency.linearRampToValueAtTime(240, now + 0.4);
+        osc2.frequency.linearRampToValueAtTime(480, now + 0.8);
 
-      gain.gain.setValueAtTime(0.3, now);
-      gain.gain.exponentialRampToValueAtTime(0.01, now + 3.0);
+        // Max volume burst (0.85 gain)
+        gain.gain.setValueAtTime(0.85, now);
+        gain.gain.exponentialRampToValueAtTime(0.05, now + 1.2);
 
-      osc1.connect(gain);
-      osc2.connect(gain);
-      gain.connect(this.audioCtx.destination);
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(this.audioCtx.destination);
 
-      osc1.start(now);
-      osc2.start(now);
-      osc1.stop(now + 3.0);
-      osc2.stop(now + 3.0);
+        osc1.start(now);
+        osc2.start(now);
+        osc1.stop(now + 1.2);
+        osc2.stop(now + 1.2);
 
-      this.activeOscillators = [osc1, osc2];
+        this.activeOscillators = [osc1, osc2];
+      } catch (err) {
+        console.warn('Siren pulse error:', err);
+      }
+    };
 
-      setTimeout(() => {
-        this.isAlarmPlaying = false;
-      }, 3000);
-    } catch (err) {
-      console.warn('Audio alarm playback error:', err);
-    }
+    playSirenPulse();
+    this.alarmInterval = setInterval(playSirenPulse, 1250);
   }
 
   public stopEmergencyAlarm() {
+    if (this.alarmInterval) {
+      clearInterval(this.alarmInterval);
+      this.alarmInterval = null;
+    }
     this.activeOscillators.forEach((osc) => {
       try {
         osc.stop();
@@ -100,7 +107,7 @@ class AudioService {
   public speak(text: string, language: 'en' | 'hi' = 'en') {
     if (!this.speechSynth || typeof window === 'undefined') return;
 
-    this.speechSynth.cancel(); // Stop any pending speech
+    this.speechSynth.cancel();
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.rate = 1.0;
@@ -113,7 +120,6 @@ class AudioService {
       utterance.lang = 'en-US';
     }
 
-    // Try finding exact language voice if available
     const voices = this.speechSynth.getVoices();
     const matchedVoice = voices.find((v) =>
       language === 'hi' ? v.lang.includes('hi') || v.name.includes('Hindi') : v.lang.includes('en')

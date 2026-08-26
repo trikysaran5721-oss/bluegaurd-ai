@@ -31,7 +31,7 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })
     };
 
-    // Broadcast across WebSockets, BroadcastChannel, NTFY push, and FormSubmit email
+    // Broadcast across Supabase Realtime, WebSockets, BroadcastChannel, NTFY push, and FormSubmit email
     emergencyRealtimeNetwork.broadcastEmergency(newAlert);
     
     // Also trigger local alarm & display modal on sender ship
@@ -43,7 +43,15 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
   };
 
   useEffect(() => {
-    // 1. Listen for real-time incoming alerts from other demo ships
+    // 0. Auto-unlock AudioContext on first user click or keypress anywhere on the page
+    const unlockAudioOnTouch = () => {
+      audioService.unlockAudioContext();
+      setAudioBlocked(false);
+    };
+    window.addEventListener('click', unlockAudioOnTouch);
+    window.addEventListener('keydown', unlockAudioOnTouch);
+
+    // 1. Listen for real-time incoming alerts from other demo ships across laptops
     emergencyRealtimeNetwork.onAlertReceived((alert) => {
       setActiveReceivedAlert(alert);
       setAcknowledged(false);
@@ -51,10 +59,10 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
       const isSuspended = audioService.isContextSuspended();
       if (isSuspended) {
         setAudioBlocked(true);
-      } else {
-        audioService.playEmergencyAlarm();
-        audioService.speak(`Emergency alert received from ship ${alert.sender_ship_id}`, 'en');
       }
+      // Always play alarm
+      audioService.playEmergencyAlarm();
+      audioService.speak(`Emergency alert received from ship ${alert.sender_ship_id}`, 'en');
     });
 
     emergencyRealtimeNetwork.onAlertAcknowledged((alertId, shipId) => {
@@ -71,18 +79,18 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
 
     window.addEventListener('blueguard:trigger_emergency', handleGlobalEmergencyEvent);
     return () => {
+      window.removeEventListener('click', unlockAudioOnTouch);
+      window.removeEventListener('keydown', unlockAudioOnTouch);
       window.removeEventListener('blueguard:trigger_emergency', handleGlobalEmergencyEvent);
     };
-  }, [currentShip]);
+  }, [currentShip, activeReceivedAlert]);
 
   const handleEnableAudio = () => {
     const success = audioService.unlockAudioContext();
-    if (success) {
-      setAudioBlocked(false);
-      audioService.playEmergencyAlarm();
-      if (activeReceivedAlert) {
-        audioService.speak(`Emergency alert received from ship ${activeReceivedAlert.sender_ship_id}`, 'en');
-      }
+    setAudioBlocked(!success);
+    audioService.playEmergencyAlarm();
+    if (activeReceivedAlert) {
+      audioService.speak(`Emergency alert received from ship ${activeReceivedAlert.sender_ship_id}`, 'en');
     }
   };
 
@@ -159,7 +167,7 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
             {audioBlocked && (
               <div className="mb-6 p-3 bg-amber-950/90 border border-amber-500/60 rounded-xl flex items-center justify-between">
                 <span className="text-xs text-amber-200 font-semibold flex items-center gap-2">
-                  <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" /> Browser autoplay restricted alert audio
+                  <Volume2 className="w-4 h-4 text-amber-400 animate-pulse" /> Tap anywhere on screen to enable alarm sound
                 </span>
                 <button
                   onClick={handleEnableAudio}
