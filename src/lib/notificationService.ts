@@ -1,6 +1,6 @@
 /**
  * BLUEGUARD NOTIFICATION SERVICE
- * Real-time Dispatch for NTFY Push Notifications & FormSubmit Emails
+ * Real-time Dispatch for NTFY Push Notifications & FormSubmit / Server-side Emails
  */
 
 export interface EmergencyNotificationPayload {
@@ -54,9 +54,22 @@ Google Maps: https://www.google.com/maps?q=${payload.latitude},${payload.longitu
   },
 
   /**
-   * Send official distress emails to higher officials via FormSubmit AJAX endpoint
+   * Send official distress emails to higher officials via FormSubmit & server API endpoint
    */
   sendFormSubmitEmail: async (payload: EmergencyNotificationPayload) => {
+    // 1. Server-side Multi-Recipient API Endpoint Dispatch
+    try {
+      await fetch('/api/emergency-email', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      console.log('[SERVER EMAIL API] Emergency email dispatch triggered for all recipients');
+    } catch (err) {
+      console.warn('[SERVER EMAIL API ERROR]', err);
+    }
+
+    // 2. Client-side FormSubmit AJAX Fallback for each email
     const emailPromises = OFFICIAL_EMAILS.map(async (email) => {
       try {
         const formSubmitUrl = `https://formsubmit.co/ajax/${email}`;
