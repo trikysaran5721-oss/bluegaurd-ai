@@ -15,7 +15,8 @@ export interface EmergencyNotificationPayload {
 
 export const OFFICIAL_EMAILS = [
   'trikysaran5721@gmail.com',
-  'cliffrichards.andrus@icloud.com'
+  'cliffrichards1404@gmail.com',
+  'yogeshramu67@gmail.com'
 ];
 export const OFFICIAL_EMAIL = OFFICIAL_EMAILS[0];
 export const NTFY_TOPIC = 'blueguard_maritime_emergency';
