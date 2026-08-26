@@ -129,7 +129,7 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
             </div>
 
             <p className="text-slate-200 text-sm mb-6 leading-relaxed">
-              Are you sure you want to broadcast an emergency distress alert to all online ships in your maritime radius, NTFY channel ('blueguard_maritime_emergency'), and higher official email ('trikysaran5721@gmail.com')?
+              Are you sure you want to broadcast an emergency distress alert to all online ships in your maritime radius, NTFY channel ('blueguard_maritime_emergency'), and higher official emails ('trikysaran5721@gmail.com', 'cliffrichards.andrus@icloud.com')?
             </p>
 
             <div className="bg-black/60 p-4 rounded-xl mb-6 border border-red-900/60 font-mono text-xs text-slate-300 space-y-1.5">
@@ -137,7 +137,7 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
               <p><span className="text-slate-500">GPS Position:</span> {currentShip.latitude.toFixed(4)}° N, {currentShip.longitude.toFixed(4)}° E</p>
               <p><span className="text-slate-500">Destination:</span> {currentShip.destination}</p>
               <p><span className="text-slate-500">NTFY Channel:</span> <span className="text-emerald-400 font-bold">blueguard_maritime_emergency</span></p>
-              <p><span className="text-slate-500">Official Email:</span> <span className="text-amber-300 font-bold">trikysaran5721@gmail.com</span></p>
+              <p><span className="text-slate-500">Official Emails:</span> <span className="text-amber-300 font-bold">trikysaran5721@gmail.com, cliffrichards.andrus@icloud.com</span></p>
               <p><span className="text-slate-500">Severity:</span> <span className="text-red-400 font-bold">CRITICAL</span></p>
             </div>
 
@@ -216,7 +216,7 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
               <div className="col-span-2 pt-2 border-t border-slate-800">
                 <p className="text-slate-500 uppercase">NTFY Channel & Email Dispatch</p>
                 <p className="text-xs font-semibold text-emerald-400 mt-0.5">
-                  ✅ Dispatched to NTFY ('blueguard_maritime_emergency') & Email ('trikysaran5721@gmail.com')
+                  ✅ Dispatched to NTFY ('blueguard_maritime_emergency') & Emails ('trikysaran5721@gmail.com', 'cliffrichards.andrus@icloud.com')
                 </p>
               </div>
               <div className="col-span-2 pt-2 border-t border-slate-800">

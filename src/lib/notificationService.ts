@@ -13,7 +13,11 @@ export interface EmergencyNotificationPayload {
   timestamp: string;
 }
 
-export const OFFICIAL_EMAIL = 'trikysaran5721@gmail.com';
+export const OFFICIAL_EMAILS = [
+  'trikysaran5721@gmail.com',
+  'cliffrichards.andrus@icloud.com'
+];
+export const OFFICIAL_EMAIL = OFFICIAL_EMAILS[0];
 export const NTFY_TOPIC = 'blueguard_maritime_emergency';
 export const NTFY_URL = `https://ntfy.sh/${NTFY_TOPIC}`;
 
@@ -49,38 +53,42 @@ Google Maps: https://www.google.com/maps?q=${payload.latitude},${payload.longitu
   },
 
   /**
-   * Send official distress email to higher official via FormSubmit AJAX endpoint
+   * Send official distress emails to higher officials via FormSubmit AJAX endpoint
    */
   sendFormSubmitEmail: async (payload: EmergencyNotificationPayload) => {
-    try {
-      const formSubmitUrl = `https://formsubmit.co/ajax/${OFFICIAL_EMAIL}`;
-      const emailBody = {
-        _subject: `MARITIME EMERGENCY DISTRESS ALERT - Ship ${payload.ship_id}`,
-        _template: 'table',
-        _captcha: 'false',
-        Ship_ID: payload.ship_id,
-        Handler_Name: payload.sender_name,
-        GPS_Latitude: payload.latitude.toFixed(4),
-        GPS_Longitude: payload.longitude.toFixed(4),
-        Destination: payload.destination,
-        Distress_Reason: payload.message,
-        Timestamp: payload.timestamp,
-        Live_Location_Map: `https://www.google.com/maps?q=${payload.latitude},${payload.longitude}`,
-        System_Notice: 'This is an automated high-seas distress alert broadcasted by BlueGuard Marine Assistant.'
-      };
+    const emailPromises = OFFICIAL_EMAILS.map(async (email) => {
+      try {
+        const formSubmitUrl = `https://formsubmit.co/ajax/${email}`;
+        const emailBody = {
+          _subject: `MARITIME EMERGENCY DISTRESS ALERT - Ship ${payload.ship_id}`,
+          _template: 'table',
+          _captcha: 'false',
+          Ship_ID: payload.ship_id,
+          Handler_Name: payload.sender_name,
+          GPS_Latitude: payload.latitude.toFixed(4),
+          GPS_Longitude: payload.longitude.toFixed(4),
+          Destination: payload.destination,
+          Distress_Reason: payload.message,
+          Timestamp: payload.timestamp,
+          Live_Location_Map: `https://www.google.com/maps?q=${payload.latitude},${payload.longitude}`,
+          System_Notice: 'This is an automated high-seas distress alert broadcasted by BlueGuard Marine Assistant.'
+        };
 
-      await fetch(formSubmitUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        },
-        body: JSON.stringify(emailBody)
-      });
-      console.log('[FORMSUBMIT] Emergency email sent to higher official:', OFFICIAL_EMAIL);
-    } catch (err) {
-      console.error('[FORMSUBMIT ERROR] Failed to send email:', err);
-    }
+        await fetch(formSubmitUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify(emailBody)
+        });
+        console.log('[FORMSUBMIT] Emergency email sent to higher official:', email);
+      } catch (err) {
+        console.error('[FORMSUBMIT ERROR] Failed to send email to ' + email + ':', err);
+      }
+    });
+
+    await Promise.allSettled(emailPromises);
   },
 
   /**
