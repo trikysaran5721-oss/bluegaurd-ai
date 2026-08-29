@@ -63,7 +63,7 @@ export const V2VCommunicationModal: React.FC<V2VCommunicationModalProps> = ({ is
     // Subscribe to incoming V2V voice messages over Supabase Realtime
     emergencyRealtimeNetwork.onV2VVoiceReceived((newVoiceMsg) => {
       console.log('[V2V UI] Received voice dispatch:', newVoiceMsg);
-      setVoiceMessages((prev) => [newVoiceMsg, ...prev]);
+      setVoiceMessages((prev) => (prev.some((m) => m.id === newVoiceMsg.id) ? prev : [newVoiceMsg, ...prev]));
       setStatusMessage(`🎙️ New radio voice dispatch received from Ship ${newVoiceMsg.sender_ship_id}`);
       
       // Auto play audio dispatch if audio URL present
@@ -158,7 +158,7 @@ export const V2VCommunicationModal: React.FC<V2VCommunicationModalProps> = ({ is
     };
 
     // Add locally to feed
-    setVoiceMessages((prev) => [newMsg, ...prev]);
+    setVoiceMessages((prev) => (prev.some((m) => m.id === newMsg.id) ? prev : [newMsg, ...prev]));
 
     // Broadcast across Supabase Realtime to all connected devices globally
     emergencyRealtimeNetwork.broadcastV2VVoiceMessage(newMsg);

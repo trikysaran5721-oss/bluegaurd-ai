@@ -197,6 +197,9 @@ class EmergencyRealtimeNetwork {
     this.alertListeners.push(listener);
   }
 
+  private processedAlertIds = new Set<string>();
+  private processedVoiceIds = new Set<string>();
+
   public onAlertAcknowledged(listener: AckListener) {
     this.ackListeners.push(listener);
   }
@@ -206,7 +209,12 @@ class EmergencyRealtimeNetwork {
   }
 
   private notifyAlertListeners(alert: EmergencyAlert) {
-    // Trigger alarm on all ships (even if same ship ID for testing or different ship IDs)
+    if (this.processedAlertIds.has(alert.id)) return;
+    this.processedAlertIds.add(alert.id);
+    if (this.processedAlertIds.size > 100) {
+      const firstKey = this.processedAlertIds.values().next().value;
+      if (firstKey) this.processedAlertIds.delete(firstKey);
+    }
     this.alertListeners.forEach((fn) => fn(alert));
   }
 
@@ -215,6 +223,12 @@ class EmergencyRealtimeNetwork {
   }
 
   private notifyVoiceListeners(voiceMsg: V2VVoiceMessage) {
+    if (this.processedVoiceIds.has(voiceMsg.id)) return;
+    this.processedVoiceIds.add(voiceMsg.id);
+    if (this.processedVoiceIds.size > 100) {
+      const firstKey = this.processedVoiceIds.values().next().value;
+      if (firstKey) this.processedVoiceIds.delete(firstKey);
+    }
     this.voiceListeners.forEach((fn) => fn(voiceMsg));
   }
 }

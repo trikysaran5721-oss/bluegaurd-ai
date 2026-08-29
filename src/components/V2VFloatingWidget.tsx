@@ -77,7 +77,7 @@ export default function V2VFloatingWidget() {
     // Listen for incoming V2V broadcasts via Supabase Realtime
     emergencyRealtimeNetwork.onV2VVoiceReceived((newDispatch) => {
       console.log('[V2V FLOATING WIDGET] Received dispatch:', newDispatch);
-      setDispatches((prev) => [newDispatch, ...prev]);
+      setDispatches((prev) => (prev.some((m) => m.id === newDispatch.id) ? prev : [newDispatch, ...prev]));
       setHasUnreadAlert(true);
 
       // Play audio automatically if audio URL present
@@ -216,7 +216,7 @@ export default function V2VFloatingWidget() {
     };
 
     // Add locally & broadcast over Supabase Realtime
-    setDispatches((prev) => [newDispatch, ...prev]);
+    setDispatches((prev) => (prev.some((m) => m.id === newDispatch.id) ? prev : [newDispatch, ...prev]));
     emergencyRealtimeNetwork.broadcastV2VVoiceMessage(newDispatch);
 
     // Reset Form
