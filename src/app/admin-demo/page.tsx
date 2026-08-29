@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile } from '@/lib/types';
 import { audioService } from '@/lib/audioService';
@@ -139,6 +140,8 @@ export default function AdminDemoPage() {
           </ol>
         </div>
       </main>
+
+      <SeawaterFooter />
     </div>
   );
 }

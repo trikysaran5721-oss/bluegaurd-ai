@@ -3,8 +3,13 @@
 
 @layer base {
   :root {
-    --bg-deep-ocean: #050b14;
-    --text-primary: #f1f5f9;
+    --bg-deep-ocean: #020617;
+    --bg-ocean-navy: #050e1d;
+    --text-primary: #f8fafc;
+    --accent-aqua: #00f2fe;
+    --accent-cyan: #06b6d4;
+    --accent-sapphire: #0284c7;
+    --emergency-red: #ef4444;
   }
 
   body {
@@ -15,30 +20,30 @@
   }
 }
 
-/* Page Theme Backgrounds & Accents */
+/* Page Theme Backgrounds & Deep Ocean Atmosphere */
 
-/* 1. LOGIN PAGE: Midnight Navy + Electric Cyan */
+/* 1. LOGIN PAGE: Deep Ocean Abyssal Midnight + Aqua Glow */
 .theme-login {
-  background: radial-gradient(circle at 50% 20%, #0c1c38 0%, #030712 100%);
+  background: radial-gradient(circle at 50% 20%, #07152b 0%, #020617 100%);
 }
 .accent-cyan-glow {
-  box-shadow: 0 0 25px rgba(6, 182, 212, 0.4);
+  box-shadow: 0 0 30px rgba(0, 242, 254, 0.35);
 }
 
-/* 2. DASHBOARD: Ocean Blue + Teal + Emerald */
+/* 2. DASHBOARD: Oceanic Navy + Bioluminescent Aqua */
 .theme-dashboard {
-  background: radial-gradient(circle at 30% 20%, #07192f 0%, #030a16 100%);
+  background: radial-gradient(circle at 30% 20%, #071a33 0%, #020617 100%);
 }
 
-/* 3. VOICE ASSISTANT: Deep Navy + Emerald Green Glow */
+/* 3. VOICE ASSISTANT: Deep Sea Trench + Sonar Glow */
 .theme-voice {
-  background: radial-gradient(circle at 50% 50%, #061e14 0%, #020907 100%);
+  background: radial-gradient(circle at 50% 50%, #051c24 0%, #01080e 100%);
 }
 .emerald-mic-glow {
-  box-shadow: 0 0 50px rgba(16, 185, 129, 0.6), 0 0 100px rgba(16, 185, 129, 0.3);
+  box-shadow: 0 0 50px rgba(6, 182, 212, 0.5), 0 0 100px rgba(0, 242, 254, 0.25);
 }
 
-/* 4. EMERGENCY: Black/Navy + Crimson Red + Emergency Orange */
+/* 4. EMERGENCY: Preserved Black/Navy + Crimson Red + Emergency Orange (UNTOUCHED) */
 .theme-emergency {
   background: radial-gradient(circle at 50% 30%, #2a0505 0%, #050101 100%);
 }
@@ -52,42 +57,56 @@
   100% { box-shadow: 0 0 20px rgba(239, 68, 68, 0.5); }
 }
 
-/* 5. TRAVEL HISTORY: Deep Indigo + Violet */
+/* 5. TRAVEL HISTORY: Deep Abyssal Sapphire */
 .theme-history {
-  background: radial-gradient(circle at 70% 30%, #150a33 0%, #05020f 100%);
+  background: radial-gradient(circle at 70% 30%, #0a1738 0%, #020617 100%);
 }
 
-/* 6. FLEET HUB: Maritime Operations Steel / Slate */
+/* 6. FLEET HUB: Tactical Command Slate */
 .theme-fleet {
-  background: radial-gradient(circle at 40% 40%, #0d1b2a 0%, #04080f 100%);
+  background: radial-gradient(circle at 40% 40%, #091b30 0%, #020617 100%);
 }
 
-/* 7. PROFILE & SETTINGS: Slate + Steel Blue */
+/* 7. PROFILE & SETTINGS: Steel Deep Navy */
 .theme-profile {
-  background: radial-gradient(circle at 50% 30%, #1e293b 0%, #090d16 100%);
+  background: radial-gradient(circle at 50% 30%, #0f1c30 0%, #020617 100%);
 }
 
-/* Custom Glassmorphism Utilities */
+/* Custom Glassmorphism System */
 .glass-panel {
-  background: rgba(15, 23, 42, 0.75);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  background: rgba(6, 15, 30, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(56, 189, 248, 0.16);
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+  position: relative;
+}
+
+/* Glass Top Edge Highlight (simulating light hitting glass) */
+.glass-panel::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.15), transparent);
+  pointer-events: none;
 }
 
 .glass-panel-cyan {
-  background: rgba(8, 47, 73, 0.7);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(6, 182, 212, 0.3);
+  background: rgba(6, 32, 54, 0.75);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(0, 242, 254, 0.28);
 }
 
 .glass-panel-emerald {
-  background: rgba(6, 78, 59, 0.65);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(16, 185, 129, 0.4);
+  background: rgba(4, 46, 38, 0.7);
+  backdrop-filter: blur(18px);
+  border: 1px solid rgba(16, 185, 129, 0.35);
 }
 
+/* Preserved Emergency Panel (UNTOUCHED) */
 .glass-panel-crimson {
   background: rgba(69, 10, 10, 0.85);
   backdrop-filter: blur(20px);
@@ -95,20 +114,30 @@
 }
 
 .glass-panel-violet {
-  background: rgba(46, 16, 101, 0.65);
-  backdrop-filter: blur(16px);
+  background: rgba(30, 16, 60, 0.7);
+  backdrop-filter: blur(18px);
   border: 1px solid rgba(139, 92, 246, 0.3);
 }
 
+/* Interactive Card Lift & Hover Effects */
+.glass-card-hover {
+  transition: transform 0.25s ease, border-color 0.25s ease, box-shadow 0.25s ease;
+}
+.glass-card-hover:hover {
+  transform: translateY(-2px);
+  border-color: rgba(56, 189, 248, 0.35);
+  box-shadow: 0 14px 45px rgba(0, 242, 254, 0.12);
+}
+
 .glass-button {
-  background: rgba(255, 255, 255, 0.08);
-  backdrop-filter: blur(10px);
+  background: rgba(255, 255, 255, 0.07);
+  backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.15);
   transition: all 0.2s ease-in-out;
 }
 .glass-button:hover {
-  background: rgba(255, 255, 255, 0.18);
-  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(0, 242, 254, 0.4);
   transform: translateY(-1px);
 }
 
@@ -123,25 +152,100 @@
   100% { transform: scale(0.95); opacity: 0.8; }
 }
 
+/* 🌊 SEAWATER FOOTER KEYFRAME ANIMATIONS */
+@keyframes waterDriftSlow {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-25%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes waterDriftMid {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-35%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes waterDriftFast {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-45%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes waterDriftSurface {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes waterDriftRipple {
+  0% { transform: translateX(0); }
+  50% { transform: translateX(-60%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes particleFloat {
+  0% { transform: translateY(0) scale(1); opacity: 0; }
+  50% { opacity: 0.8; }
+  100% { transform: translateY(-45px) scale(1.2); opacity: 0; }
+}
+
+.animate-water-drift-slow {
+  animation: waterDriftSlow 24s ease-in-out infinite;
+}
+.animate-water-drift-mid {
+  animation: waterDriftMid 18s ease-in-out infinite;
+}
+.animate-water-drift-fast {
+  animation: waterDriftFast 12s ease-in-out infinite;
+}
+.animate-water-drift-surface {
+  animation: waterDriftSurface 8s ease-in-out infinite;
+}
+.animate-water-drift-ripple {
+  animation: waterDriftRipple 6s ease-in-out infinite;
+}
+
+.animate-particle-float {
+  animation: particleFloat 4s ease-in-out infinite;
+}
+.animate-particle-float-delayed {
+  animation: particleFloat 5s ease-in-out 2s infinite;
+}
+
+/* Reduced Motion Fallback */
+@media (prefers-reduced-motion: reduce) {
+  .animate-water-drift-slow,
+  .animate-water-drift-mid,
+  .animate-water-drift-fast,
+  .animate-water-drift-surface,
+  .animate-water-drift-ripple,
+  .animate-particle-float,
+  .animate-particle-float-delayed,
+  .crimson-pulse,
+  .mic-pulse-ring {
+    animation: none !important;
+  }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(2, 6, 23, 0.8);
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(56, 189, 248, 0.3);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(56, 189, 248, 0.6);
+  background: rgba(0, 242, 254, 0.6);
 }
 
 /* Leaflet Dark Tile Overrides & Layer Stacking Fix */
 .leaflet-container {
-  background-color: #061325 !important;
+  background-color: #030a16 !important;
   width: 100%;
   height: 100%;
   border-radius: 0.75rem;

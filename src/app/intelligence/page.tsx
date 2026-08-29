@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import MarineMap from '@/components/MarineMap';
 import BlueGuardMic from '@/components/BlueGuardMic';
 import EmergencyOverlay from '@/components/EmergencyOverlay';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile, MarineRoute, SSTData, ChlorophyllData, ScenarioSimulation, RouteComparison } from '@/lib/types';
 import {
@@ -341,6 +342,8 @@ export default function MarineIntelligencePage() {
           )}
         </div>
       </main>
+
+      <SeawaterFooter />
 
       <BlueGuardMic
         language={userProfile.preferred_language}

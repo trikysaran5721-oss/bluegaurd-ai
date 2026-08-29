@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
 import EmergencyOverlay from '@/components/EmergencyOverlay';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile, NearbyVessel } from '@/lib/types';
 import { INITIAL_DEMO_FLEET } from '@/lib/marineData';
@@ -112,6 +113,8 @@ export default function FleetHubPage() {
           })}
         </div>
       </main>
+
+      <SeawaterFooter />
 
       <EmergencyOverlay currentShip={userProfile} />
     </div>

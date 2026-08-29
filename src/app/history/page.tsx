@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile, TravelTrip } from '@/lib/types';
 import { getInitialTrips } from '@/lib/marineData';
@@ -109,6 +110,8 @@ export default function HistoryPage() {
           ))}
         </div>
       </main>
+
+      <SeawaterFooter />
     </div>
   );
 }

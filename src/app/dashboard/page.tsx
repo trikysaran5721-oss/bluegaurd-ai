@@ -6,6 +6,7 @@ import Navigation from '@/components/Navigation';
 import MarineMap from '@/components/MarineMap';
 import BlueGuardMic from '@/components/BlueGuardMic';
 import EmergencyOverlay from '@/components/EmergencyOverlay';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile, MarineRoute, WeatherData, WindData, TideData, CycloneHazard, NearbyVessel, SSTData, ChlorophyllData } from '@/lib/types';
 import {
@@ -375,6 +376,9 @@ export default function DashboardPage() {
           </div>
         </div>
       </main>
+
+      {/* Floating Seawater Parallax Footer */}
+      <SeawaterFooter />
 
       {/* Signature BlueGuard Floating Mic */}
       <BlueGuardMic

@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react';
 import Navigation from '@/components/Navigation';
 import MarineMap from '@/components/MarineMap';
+import SeawaterFooter from '@/components/SeawaterFooter';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile, Waypoint, NearbyVessel, ScenarioSimulation } from '@/lib/types';
 import { calculateDistanceNM, INITIAL_DEMO_FLEET, getMockWhatIfScenario, getMockSSTData, getMockChlorophyllData } from '@/lib/marineData';
@@ -305,6 +306,8 @@ export default function RouteBuilderPage() {
           </div>
         </div>
       </main>
+
+      <SeawaterFooter />
     </div>
   );
 }
