@@ -4,6 +4,7 @@ import React, { useState, useEffect } from 'react';
 import { EmergencyAlert, ShipProfile } from '@/lib/types';
 import { audioService } from '@/lib/audioService';
 import { emergencyRealtimeNetwork } from '@/lib/emergencyRealtime';
+import V2VFloatingWidget from './V2VFloatingWidget';
 import { AlertOctagon, Volume2, ShieldAlert, CheckCircle2, XCircle, Radio, MapPin } from 'lucide-react';
 
 interface EmergencyOverlayProps {
@@ -249,6 +250,9 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
           </div>
         </div>
       )}
+
+      {/* Floating Persistent V2V Dispatch Alert Widget */}
+      <V2VFloatingWidget />
     </>
   );
 }

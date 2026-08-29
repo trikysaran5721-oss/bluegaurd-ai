@@ -173,6 +173,12 @@ export interface V2VVoiceMessage {
   timestamp: string;
   channel: string;
   note?: string;
+  media_type?: 'audio' | 'image' | 'video' | 'text';
+  media_url?: string;
+  text_content?: string;
+  reply_to_id?: string;
+  reply_to_sender?: string;
+  reply_to_snippet?: string;
 }
 
 export interface TravelTrip {

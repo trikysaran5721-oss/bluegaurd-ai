@@ -79,8 +79,11 @@ export const V2VCommunicationModal: React.FC<V2VCommunicationModalProps> = ({ is
 
   if (!isOpen) return null;
 
+  const [recordedAudioPreview, setRecordedAudioPreview] = useState<string | null>(null);
+
   const startRecording = async () => {
     audioService.unlockAudioContext();
+    setRecordedAudioPreview(null);
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const mediaRecorder = new MediaRecorder(stream);
@@ -99,7 +102,8 @@ export const V2VCommunicationModal: React.FC<V2VCommunicationModalProps> = ({ is
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
           const base64Audio = reader.result as string;
-          broadcastVoice(base64Audio, recordingTime || 3, 'Recorded Radio Dispatch');
+          setRecordedAudioPreview(base64Audio);
+          setStatusMessage('🎧 Voice recorded! Click Listen Preview to verify or Broadcast to send.');
         };
       };
 
@@ -285,8 +289,40 @@ export const V2VCommunicationModal: React.FC<V2VCommunicationModalProps> = ({ is
                     className="px-6 py-3 bg-red-600 hover:bg-red-500 text-white font-bold rounded-xl shadow-lg shadow-red-900/50 flex items-center gap-2 transition transform active:scale-95"
                   >
                     <MicOff className="w-5 h-5" />
-                    Stop & Broadcast Dispatch
+                    Stop Recording
                   </button>
+                </div>
+              ) : recordedAudioPreview ? (
+                <div className="space-y-3 w-full">
+                  <div className="text-xs text-emerald-300 font-bold flex items-center justify-center gap-1">
+                    <CheckCircle2 className="w-4 h-4" /> Recording Ready for Preview
+                  </div>
+                  <div className="flex flex-wrap items-center justify-center gap-2">
+                    <button
+                      onClick={() => playAudio('preview', recordedAudioPreview)}
+                      className="px-4 py-2 bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-600/50 rounded-xl text-xs font-bold flex items-center gap-1.5"
+                    >
+                      <Play className="w-4 h-4" /> Listen Preview
+                    </button>
+                    <button
+                      onClick={() => {
+                        broadcastVoice(recordedAudioPreview, recordingTime || 4, 'Recorded Voice Radio Dispatch');
+                        setRecordedAudioPreview(null);
+                      }}
+                      className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-emerald-950 flex items-center gap-1.5"
+                    >
+                      <Radio className="w-4 h-4" /> Broadcast Dispatch
+                    </button>
+                    <button
+                      onClick={() => {
+                        setRecordedAudioPreview(null);
+                        startRecording();
+                      }}
+                      className="px-3 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs"
+                    >
+                      Re-record
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <button
