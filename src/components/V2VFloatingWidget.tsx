@@ -18,12 +18,59 @@ import {
   ChevronDown,
   ShieldAlert,
   CornerDownRight,
-  Sparkles
+  Sparkles,
+  CheckCircle2,
+  AlertCircle
 } from 'lucide-react';
 import { V2VVoiceMessage, ShipProfile } from '@/lib/types';
 import { emergencyRealtimeNetwork } from '@/lib/emergencyRealtime';
 import { demoStorage } from '@/lib/supabase';
 import { audioService } from '@/lib/audioService';
+
+// Generate or retrieve persistent unique Device ID for this browser tab/device
+const getDeviceId = (): string => {
+  if (typeof window === 'undefined') return 'dev_server';
+  let devId = sessionStorage.getItem('blueguard_device_id');
+  if (!devId) {
+    devId = `dev_${Date.now()}_${Math.random().toString(36).substring(2, 9)}`;
+    sessionStorage.setItem('blueguard_device_id', devId);
+  }
+  return devId;
+};
+
+// Canvas Image Compression helper to prevent WebSocket payload drops
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 480;
+        if (width > height) {
+          if (width > maxDim) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          }
+        } else {
+          if (height > maxDim) {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.65));
+      };
+    };
+  });
+};
 
 export default function V2VFloatingWidget() {
   const [currentUser, setCurrentUser] = useState<ShipProfile | null>(null);
@@ -36,12 +83,13 @@ export default function V2VFloatingWidget() {
   const [replyingTo, setReplyingTo] = useState<V2VVoiceMessage | null>(null);
   const [replyText, setReplyText] = useState('');
   const [replyMediaType, setReplyMediaType] = useState<'text' | 'voice' | 'image' | 'video' | 'audio'>('text');
-  
-  // Voice Recording Preview State
+
+  // Voice Recording & Preview State
   const [isRecording, setIsRecording] = useState(false);
   const [recordingSeconds, setRecordingSeconds] = useState(0);
   const [recordedAudioPreview, setRecordedAudioPreview] = useState<string | null>(null);
-  
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+
   // Upload Previews
   const [uploadedMediaPreview, setUploadedMediaPreview] = useState<string | null>(null);
   const [uploadedMediaType, setUploadedMediaType] = useState<'audio' | 'image' | 'video' | null>(null);
@@ -51,6 +99,7 @@ export default function V2VFloatingWidget() {
   const timerRef = useRef<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     const user = demoStorage.getUser();
@@ -58,11 +107,14 @@ export default function V2VFloatingWidget() {
       setCurrentUser(user);
     }
 
-    // Default initial mock radio dispatch
+    const currentDevId = getDeviceId();
+
+    // Initial mock message
     const initialMsg: V2VVoiceMessage = {
       id: 'v2v_initial_1',
       sender_ship_id: '987654321098',
       sender_name: 'MV Ocean Warrior',
+      device_id: 'dev_mock_remote',
       audio_url: '',
       duration_sec: 4,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -74,15 +126,22 @@ export default function V2VFloatingWidget() {
 
     setDispatches([initialMsg]);
 
-    // Listen for incoming V2V broadcasts via Supabase Realtime
+    // Subscribe to incoming V2V dispatches over Supabase Realtime
     emergencyRealtimeNetwork.onV2VVoiceReceived((newDispatch) => {
-      console.log('[V2V FLOATING WIDGET] Received dispatch:', newDispatch);
-      setDispatches((prev) => (prev.some((m) => m.id === newDispatch.id) ? prev : [newDispatch, ...prev]));
-      setHasUnreadAlert(true);
+      // Check if received from another device/tab (even if logged into the SAME Ship ID!)
+      const isFromSelfSameTab = newDispatch.device_id && newDispatch.device_id === currentDevId;
 
-      // Play audio automatically if audio URL present
-      if (newDispatch.audio_url || (newDispatch.media_type === 'audio' && newDispatch.media_url)) {
-        playAudio(newDispatch.id, newDispatch.audio_url || newDispatch.media_url || '');
+      if (!isFromSelfSameTab) {
+        setDispatches((prev) => {
+          if (prev.some((m) => m.id === newDispatch.id)) return prev;
+          return [newDispatch, ...prev];
+        });
+        setHasUnreadAlert(true);
+
+        // Auto play incoming voice/audio dispatch if present
+        if (newDispatch.audio_url || (newDispatch.media_type === 'audio' && newDispatch.media_url)) {
+          playAudio(newDispatch.id, newDispatch.audio_url || newDispatch.media_url || '');
+        }
       }
     });
 
@@ -91,7 +150,7 @@ export default function V2VFloatingWidget() {
     };
   }, []);
 
-  // Play / Pause Audio helper
+  // Play / Pause Feed Audio
   const playAudio = (id: string, audioUrl: string) => {
     audioService.unlockAudioContext();
 
@@ -110,44 +169,96 @@ export default function V2VFloatingWidget() {
       return;
     }
 
-    const audio = new Audio(audioUrl);
-    activeAudioRef.current = audio;
-    setActivePlayingId(id);
+    try {
+      const audio = new Audio(audioUrl);
+      activeAudioRef.current = audio;
+      setActivePlayingId(id);
 
-    audio.play().catch((err) => {
-      console.warn('Audio play failed:', err);
-      setActivePlayingId(null);
-    });
+      audio.play().catch((err) => {
+        console.warn('Feed audio play error:', err);
+        setActivePlayingId(null);
+      });
 
-    audio.onended = () => {
-      setActivePlayingId(null);
-      activeAudioRef.current = null;
-    };
+      audio.onended = () => {
+        setActivePlayingId(null);
+        activeAudioRef.current = null;
+      };
+    } catch (err) {
+      console.warn('Audio construction error:', err);
+    }
+  };
+
+  // Play / Pause Recording Preview Audio
+  const playRecordingPreview = () => {
+    audioService.unlockAudioContext();
+
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+      setIsPreviewPlaying(false);
+      return;
+    }
+
+    if (!recordedAudioPreview) return;
+
+    try {
+      const audio = new Audio(recordedAudioPreview);
+      previewAudioRef.current = audio;
+      setIsPreviewPlaying(true);
+
+      audio.play().catch((err) => {
+        console.warn('Preview play error:', err);
+        setIsPreviewPlaying(false);
+      });
+
+      audio.onended = () => {
+        setIsPreviewPlaying(false);
+        previewAudioRef.current = null;
+      };
+    } catch (err) {
+      console.warn('Preview audio creation error:', err);
+    }
   };
 
   // Start Voice Recording with PREVIEW
   const startVoiceRecording = async () => {
     audioService.unlockAudioContext();
+    setRecordedAudioPreview(null);
+    setIsPreviewPlaying(false);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const mediaRecorder = new MediaRecorder(stream);
+      const options = MediaRecorder.isTypeSupported('audio/webm;codecs=opus')
+        ? { mimeType: 'audio/webm;codecs=opus' }
+        : MediaRecorder.isTypeSupported('audio/mp4')
+        ? { mimeType: 'audio/mp4' }
+        : undefined;
+
+      const mediaRecorder = new MediaRecorder(stream, options);
       mediaRecorderRef.current = mediaRecorder;
       audioChunksRef.current = [];
 
       mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) audioChunksRef.current.push(event.data);
+        if (event.data && event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+        }
       };
 
       mediaRecorder.onstop = () => {
-        const audioBlob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const audioBlob = new Blob(audioChunksRef.current, { type: mediaRecorder.mimeType || 'audio/webm' });
         const reader = new FileReader();
         reader.readAsDataURL(audioBlob);
         reader.onloadend = () => {
-          setRecordedAudioPreview(reader.result as string);
+          const base64Audio = reader.result as string;
+          setRecordedAudioPreview(base64Audio);
         };
       };
 
-      mediaRecorder.start();
+      mediaRecorder.start(250); // Collect data chunks every 250ms
       setIsRecording(true);
       setRecordingSeconds(0);
 
@@ -168,23 +279,30 @@ export default function V2VFloatingWidget() {
     }
   };
 
-  // File Upload Handler (Audio, Image, Video)
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, fileType: 'audio' | 'image' | 'video') => {
+  // File Upload Handler (Image compressed, Audio, Video)
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>, fileType: 'audio' | 'image' | 'video') => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onloadend = () => {
-      setUploadedMediaPreview(reader.result as string);
-      setUploadedMediaType(fileType);
-    };
+    if (fileType === 'image') {
+      const compressedDataUrl = await compressImage(file);
+      setUploadedMediaPreview(compressedDataUrl);
+      setUploadedMediaType('image');
+    } else {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = () => {
+        setUploadedMediaPreview(reader.result as string);
+        setUploadedMediaType(fileType);
+      };
+    }
   };
 
-  // Broadcast Message or Reply
+  // Broadcast Dispatch
   const handleSendDispatch = () => {
     const shipId = currentUser?.ship_id || '123456789012';
     const shipName = currentUser?.display_name || `Ship ${shipId}`;
+    const devId = getDeviceId();
 
     let mediaType: 'audio' | 'image' | 'video' | 'text' = 'text';
     let mediaUrl = '';
@@ -199,14 +317,15 @@ export default function V2VFloatingWidget() {
     }
 
     const newDispatch: V2VVoiceMessage = {
-      id: 'v2v_' + Date.now(),
+      id: 'v2v_' + Date.now() + '_' + Math.random().toString(36).substring(2, 6),
       sender_ship_id: shipId,
       sender_name: shipName,
+      device_id: devId,
       audio_url: mediaType === 'audio' ? mediaUrl : '',
-      duration_sec: recordingSeconds || 5,
+      duration_sec: recordingSeconds || 4,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel: 'Channel 16',
-      note: textContent || (replyingTo ? `Reply to #${replyingTo.sender_ship_id}` : 'V2V Broadcast'),
+      note: textContent || (replyingTo ? `Reply to #${replyingTo.sender_ship_id}` : 'V2V Radio Dispatch'),
       media_type: mediaType,
       media_url: mediaUrl,
       text_content: textContent,
@@ -215,17 +334,24 @@ export default function V2VFloatingWidget() {
       reply_to_snippet: replyingTo ? (replyingTo.text_content || replyingTo.note) : undefined
     };
 
-    // Add locally & broadcast over Supabase Realtime
-    setDispatches((prev) => (prev.some((m) => m.id === newDispatch.id) ? prev : [newDispatch, ...prev]));
+    // Add locally to sender's UI
+    setDispatches((prev) => [newDispatch, ...prev]);
+
+    // Broadcast across Supabase Realtime to ALL devices (including devices logged into the same Ship ID)
     emergencyRealtimeNetwork.broadcastV2VVoiceMessage(newDispatch);
 
-    // Reset Form
+    // Reset Composer
     setReplyText('');
     setRecordedAudioPreview(null);
     setUploadedMediaPreview(null);
     setUploadedMediaType(null);
     setReplyingTo(null);
     setRecordingSeconds(0);
+    setIsPreviewPlaying(false);
+    if (previewAudioRef.current) {
+      previewAudioRef.current.pause();
+      previewAudioRef.current = null;
+    }
   };
 
   return (
@@ -268,7 +394,7 @@ export default function V2VFloatingWidget() {
 
       {/* 2. EXPANDED FLOATING V2V DISPATCH & CHAT DRAWER */}
       {isExpanded && (
-        <div className="w-[360px] sm:w-[420px] max-h-[560px] bg-slate-900/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-2xl shadow-slate-950 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-200">
+        <div className="w-[360px] sm:w-[420px] max-h-[580px] bg-slate-900/95 backdrop-blur-xl border border-cyan-500/40 rounded-3xl shadow-2xl shadow-slate-950 overflow-hidden flex flex-col animate-in slide-in-from-bottom-4 duration-200">
           
           {/* Header */}
           <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-slate-900 via-cyan-950/60 to-slate-900 border-b border-cyan-500/30">
@@ -281,7 +407,9 @@ export default function V2VFloatingWidget() {
                   <span>V2V RADIO FEED</span>
                   <span className="text-[9px] bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 px-1.5 rounded font-mono">CH 16</span>
                 </div>
-                <p className="text-[10px] text-cyan-300/80">Real-time Inter-Ship Voice & Chat Mesh</p>
+                <p className="text-[10px] text-cyan-300/80">
+                  Ship #{currentUser?.ship_id || '123456789012'} Mesh
+                </p>
               </div>
             </div>
 
@@ -293,10 +421,10 @@ export default function V2VFloatingWidget() {
             </button>
           </div>
 
-          {/* Messages & Dispatches Feed */}
+          {/* Messages Feed */}
           <div className="flex-1 p-3 overflow-y-auto space-y-3 max-h-[300px] bg-slate-950/70">
             {dispatches.map((msg) => {
-              const isMine = msg.sender_ship_id === currentUser?.ship_id;
+              const isMine = msg.device_id === getDeviceId();
               return (
                 <div
                   key={msg.id}
@@ -328,7 +456,7 @@ export default function V2VFloatingWidget() {
                     </div>
                   )}
 
-                  {/* Message Content rendering based on media type */}
+                  {/* Message Content */}
                   {msg.text_content && (
                     <p className="text-slate-200 leading-relaxed font-sans">{msg.text_content}</p>
                   )}
@@ -365,7 +493,7 @@ export default function V2VFloatingWidget() {
                     </div>
                   )}
 
-                  {/* Reply Button */}
+                  {/* Reply Action */}
                   <div className="flex items-center justify-end pt-1">
                     <button
                       onClick={() => {
@@ -383,7 +511,7 @@ export default function V2VFloatingWidget() {
             })}
           </div>
 
-          {/* Composer & Reply Box */}
+          {/* Composer Box */}
           <div className="p-3 bg-slate-900 border-t border-cyan-500/30 space-y-2.5">
             
             {/* Target Reply Banner */}
@@ -401,6 +529,7 @@ export default function V2VFloatingWidget() {
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <div className="flex items-center gap-1">
                 <button
+                  type="button"
                   onClick={() => setReplyMediaType('text')}
                   className={`p-1.5 rounded-lg text-xs flex items-center gap-1 ${
                     replyMediaType === 'text' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:bg-slate-800'
@@ -410,6 +539,7 @@ export default function V2VFloatingWidget() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => setReplyMediaType('voice')}
                   className={`p-1.5 rounded-lg text-xs flex items-center gap-1 ${
                     replyMediaType === 'voice' ? 'bg-cyan-600 text-white font-bold' : 'text-slate-400 hover:bg-slate-800'
@@ -419,6 +549,7 @@ export default function V2VFloatingWidget() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setReplyMediaType('audio');
                     fileInputRef.current?.click();
@@ -429,6 +560,7 @@ export default function V2VFloatingWidget() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setReplyMediaType('image');
                     fileInputRef.current?.click();
@@ -439,6 +571,7 @@ export default function V2VFloatingWidget() {
                 </button>
 
                 <button
+                  type="button"
                   onClick={() => {
                     setReplyMediaType('video');
                     fileInputRef.current?.click();
@@ -477,8 +610,9 @@ export default function V2VFloatingWidget() {
                       🎙️ RECORDING: 00:0{recordingSeconds}
                     </span>
                     <button
+                      type="button"
                       onClick={stopVoiceRecording}
-                      className="px-3 py-1 bg-rose-600 text-white text-xs font-bold rounded-lg"
+                      className="px-3 py-1 bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold rounded-lg shadow"
                     >
                       Stop & Preview
                     </button>
@@ -486,21 +620,28 @@ export default function V2VFloatingWidget() {
                 ) : recordedAudioPreview ? (
                   <div className="space-y-2">
                     <div className="text-[11px] text-emerald-300 font-bold flex items-center justify-center gap-1">
-                      <Sparkles className="w-3.5 h-3.5" /> Recording Ready to Preview & Broadcast
+                      <CheckCircle2 className="w-3.5 h-3.5" /> Recording Ready for Preview
                     </div>
                     <div className="flex items-center justify-center gap-2">
                       <button
-                        onClick={() => playAudio('preview', recordedAudioPreview)}
-                        className="px-3 py-1 bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 rounded-lg text-xs font-bold flex items-center gap-1"
+                        type="button"
+                        onClick={playRecordingPreview}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition ${
+                          isPreviewPlaying
+                            ? 'bg-amber-500 text-slate-950 animate-pulse'
+                            : 'bg-cyan-600/30 text-cyan-300 border border-cyan-500/40 hover:bg-cyan-600/50'
+                        }`}
                       >
-                        <Play className="w-3.5 h-3.5" /> Listen Preview
+                        {isPreviewPlaying ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+                        {isPreviewPlaying ? 'Playing Preview...' : 'Listen Preview'}
                       </button>
                       <button
+                        type="button"
                         onClick={() => {
                           setRecordedAudioPreview(null);
                           startVoiceRecording();
                         }}
-                        className="px-3 py-1 bg-slate-800 text-slate-300 rounded-lg text-xs"
+                        className="px-3 py-1.5 bg-slate-800 text-slate-300 rounded-lg text-xs hover:bg-slate-700"
                       >
                         Re-record
                       </button>
@@ -508,8 +649,9 @@ export default function V2VFloatingWidget() {
                   </div>
                 ) : (
                   <button
+                    type="button"
                     onClick={startVoiceRecording}
-                    className="w-full py-2 bg-cyan-600 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2"
+                    className="w-full py-2 bg-cyan-600 hover:bg-cyan-500 text-white font-bold rounded-xl text-xs flex items-center justify-center gap-2 shadow-lg shadow-cyan-950"
                   >
                     <Mic className="w-4 h-4" /> Start Voice Recording
                   </button>
@@ -520,10 +662,12 @@ export default function V2VFloatingWidget() {
             {/* Upload Preview Badge */}
             {uploadedMediaPreview && (
               <div className="p-2 rounded-xl bg-slate-950 border border-cyan-500/40 text-xs flex items-center justify-between">
-                <span className="text-cyan-300 font-bold capitalize">
-                  {uploadedMediaType} Attached
+                <span className="text-cyan-300 font-bold capitalize flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                  {uploadedMediaType} Attached (Compressed)
                 </span>
                 <button
+                  type="button"
                   onClick={() => {
                     setUploadedMediaPreview(null);
                     setUploadedMediaType(null);
@@ -535,17 +679,18 @@ export default function V2VFloatingWidget() {
               </div>
             )}
 
-            {/* Text Input & Send Button */}
+            {/* Text Input & Broadcast Button */}
             <div className="flex items-center gap-2">
               <input
                 type="text"
                 value={replyText}
                 onChange={(e) => setReplyText(e.target.value)}
-                placeholder="Type radio chat message or note..."
+                placeholder="Type radio chat message..."
                 className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400"
               />
 
               <button
+                type="button"
                 onClick={handleSendDispatch}
                 className="px-4 py-2 bg-cyan-600 hover:bg-cyan-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-950 transition transform active:scale-95"
               >

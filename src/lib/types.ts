@@ -168,6 +168,7 @@ export interface V2VVoiceMessage {
   id: string;
   sender_ship_id: string;
   sender_name: string;
+  device_id?: string;
   audio_url: string;
   duration_sec: number;
   timestamp: string;
