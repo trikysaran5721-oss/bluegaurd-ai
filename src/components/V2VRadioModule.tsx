@@ -21,11 +21,14 @@ import {
   MessageSquare,
   Ship,
   Languages,
-  Info
+  Info,
+  RotateCcw,
+  Square
 } from 'lucide-react';
 import { ShipProfile, V2VVoiceMessage, NearbyVessel } from '@/lib/types';
 import { audioService } from '@/lib/audioService';
 import { voiceRecognitionService } from '@/lib/voiceRecognition';
+import { voiceService } from '@/lib/voiceService';
 import { emergencyRealtimeNetwork } from '@/lib/emergencyRealtime';
 import { communicationAgent, multilingualVoiceAgent } from '@/lib/agenticOrchestrator';
 
@@ -40,28 +43,27 @@ export default function V2VRadioModule({
   nearbyVessels,
   onVoiceQueryResult
 }: V2VRadioModuleProps) {
-  // --- Voice Assistant States (5 Required States) ---
-  // 'Voice Ready' | 'Listening' | 'Processing' | 'Speaking' | 'Mic Off'
-  const [voiceState, setVoiceState] = useState<'Voice Ready' | 'Listening' | 'Processing' | 'Speaking' | 'Mic Off'>('Voice Ready');
-  const [selectedLanguage, setSelectedLanguage] = useState<string>('en');
+  // --- Voice Assistant States (§5 Required States) ---
+  // '🟢 Ready' | '🎙️ Listening' | '🧠 Processing' | '🌐 Language Detected' | '🔊 Speaking' | '🔴 Error' | 'Mic Off'
+  const [voiceState, setVoiceState] = useState<'Ready' | 'Listening' | 'Processing' | 'Detected' | 'Speaking' | 'Error' | 'Mic Off'>('Ready');
+  const [selectedLanguage, setSelectedLanguage] = useState<string>('en-IN');
   const [liveTranscript, setLiveTranscript] = useState<string>('');
+  const [detectedLangCode, setDetectedLangCode] = useState<string>('en-IN');
   const [detectedLangLabel, setDetectedLangLabel] = useState<string>('English');
   const [aiResponseText, setAiResponseText] = useState<string>('');
   const [voiceErrorMessage, setVoiceErrorMessage] = useState<string | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(false);
+  const [isLowConfidenceLang, setIsLowConfidenceLang] = useState<boolean>(false);
 
   // --- V2V Cross-Language Chat & Vessel Mesh ---
   const [v2vMessages, setV2vMessages] = useState<V2VVoiceMessage[]>([]);
   const [selectedTargetVessel, setSelectedTargetVessel] = useState<NearbyVessel | null>(null);
   const [v2vTextInput, setV2vTextInput] = useState<string>('');
-  const [activeAudioPlayingId, setActiveAudioPlayingId] = useState<string | null>(null);
   const [offlineAlertMessage, setOfflineAlertMessage] = useState<string | null>(null);
 
   // --- Emergency Broadcast Modal State ---
   const [showEmergencyConfirmModal, setShowEmergencyConfirmModal] = useState<boolean>(false);
   const [emergencyReasonInput, setEmergencyReasonInput] = useState<string>('Engine failure near Palk Strait');
-
-  const recognitionRef = useRef<any>(null);
-  const activeAudioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
     // 1. Initial V2V Messages Feed
@@ -88,22 +90,48 @@ export default function V2VRadioModule({
     });
   }, []);
 
+  const getLanguageLabelName = (code: string) => {
+    const map: Record<string, string> = {
+      'en-IN': 'English',
+      'ta-IN': 'தமிழ் (Tamil)',
+      'hi-IN': 'हिंदी (Hindi)',
+      'te-IN': 'తెలుగు (Telugu)',
+      'ml-IN': 'മലയാളം (Malayalam)',
+      'kn-IN': 'ಕನ್ನಡ (Kannada)',
+      'bn-IN': 'বাংলা (Bengali)',
+      'mr-IN': 'मराठी (Marathi)',
+      'gu-IN': 'ગુજરાતી (Gujarati)',
+      en: 'English',
+      ta: 'தமிழ் (Tamil)',
+      hi: 'हिंदी (Hindi)',
+      te: 'తెలుగు (Telugu)',
+      ml: 'മലയാളം (Malayalam)',
+      kn: 'ಕನ್ನಡ (Kannada)',
+      bn: 'বাংলা (Bengali)',
+      mr: 'मराठी (Marathi)',
+      gu: 'ગુજરાતી (Gujarati)'
+    };
+    return map[code] || 'English';
+  };
+
   // --- Voice Assistant Functions ---
   const startVoiceCapture = () => {
     audioService.unlockAudioContext();
     setVoiceErrorMessage(null);
     setLiveTranscript('');
     setAiResponseText('');
+    setIsLowConfidenceLang(false);
 
     if (!voiceRecognitionService.isSupported()) {
       setVoiceState('Mic Off');
-      setVoiceErrorMessage('Microphone access is required for Voice AI. You can continue using text chat.');
+      setVoiceErrorMessage('Microphone access is required for voice interaction. You can continue using text.');
       return;
     }
 
     setVoiceState('Listening');
-    voiceRecognitionService.setLanguage(selectedLanguage);
-    setDetectedLangLabel(multilingualVoiceAgent.getLanguageLabel(selectedLanguage));
+    const simpleLang = selectedLanguage.split('-')[0];
+    voiceRecognitionService.setLanguage(simpleLang);
+    setDetectedLangLabel(getLanguageLabelName(selectedLanguage));
 
     voiceRecognitionService.startListening((transcriptText: string, isFinal: boolean) => {
       if (transcriptText) {
@@ -117,20 +145,30 @@ export default function V2VRadioModule({
 
   const stopVoiceCapture = () => {
     voiceRecognitionService.stopListening();
-    setVoiceState('Voice Ready');
+    setVoiceState('Ready');
   };
 
   const processVoiceQuery = async (queryText: string) => {
     setVoiceState('Processing');
 
     try {
+      // 1. Send query to Sarvam STT / Voice Transcribe Proxy
+      const transcribeRes = await voiceService.transcribe(undefined, selectedLanguage, queryText);
+      
+      const detectedCode = transcribeRes.language_code || selectedLanguage;
+      setDetectedLangCode(detectedCode);
+      setDetectedLangLabel(getLanguageLabelName(detectedCode));
+      setIsDemoMode(transcribeRes.is_demo_mode);
+      setVoiceState('Detected');
+
+      // 2. Query Agentic LLM System (ChatGPT / Gemini / Multilingual Generator)
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: queryText,
           ship_id: currentShip.ship_id,
-          language: selectedLanguage,
+          language: detectedCode.split('-')[0],
           destination: currentShip.destination || 'Colombo'
         })
       });
@@ -140,34 +178,48 @@ export default function V2VRadioModule({
         const data = await res.json();
         answer = data.answer;
       } else {
-        answer = `BlueGuard Advisory for Ship #${currentShip.ship_id}: Weather near ${currentShip.destination || 'Colombo'} is experiencing 22 knots NE wind. Maintain safe passage.`;
+        answer = `BlueGuard Advisory: Weather near ${currentShip.destination || 'Colombo'} is experiencing 22 knots NE wind.`;
       }
 
       setAiResponseText(answer);
       setVoiceState('Speaking');
-      audioService.speak(answer, selectedLanguage);
+
+      // 3. Synthesize Voice using Sarvam TTS (bulbul:v1)
+      const synthResult = await voiceService.synthesize(answer, detectedCode);
+      if (synthResult.is_demo_mode) {
+        setIsDemoMode(true);
+      }
 
       if (onVoiceQueryResult) {
         onVoiceQueryResult(queryText, answer);
       }
 
       setTimeout(() => {
-        setVoiceState('Voice Ready');
+        setVoiceState('Ready');
       }, 5000);
     } catch (err) {
-      console.warn('Voice agent fetch error:', err);
-      const fallback = `BlueGuard Advisory: Wind speed is 22 knots NE with 2.1m wave height. Proceed with caution.`;
-      setAiResponseText(fallback);
-      setVoiceState('Speaking');
-      audioService.speak(fallback, selectedLanguage);
+      console.warn('Voice query processing error:', err);
+      setVoiceState('Error');
+      setVoiceErrorMessage("Couldn't understand the audio. Please try again.");
       setTimeout(() => {
-        setVoiceState('Voice Ready');
+        setVoiceState('Ready');
       }, 4000);
     }
   };
 
-  // --- V2V Cross-Language Transmission ---
-  const handleSendV2VDispatch = (textToSend?: string) => {
+  const handleReplayResponse = () => {
+    if (aiResponseText) {
+      voiceService.synthesize(aiResponseText, detectedLangCode);
+    }
+  };
+
+  const handleStopResponse = () => {
+    voiceService.stopPlayback();
+    audioService.speak('', 'en');
+  };
+
+  // --- V2V Cross-Language Transmission (§9) ---
+  const handleSendV2VDispatch = async (textToSend?: string) => {
     const text = textToSend || v2vTextInput;
     if (!text.trim()) return;
 
@@ -180,9 +232,12 @@ export default function V2VRadioModule({
     const shipId = currentShip.ship_id;
     const shipName = currentShip.display_name || `Ship #${shipId}`;
 
-    // Perform Cross-Language Translation if target vessel uses another language
-    const targetLang = selectedTargetVessel ? 'ta' : selectedLanguage;
-    const translation = communicationAgent.translateV2V(text, targetLang);
+    const srcLang = selectedLanguage;
+    const tgtLang = selectedTargetVessel ? 'ta-IN' : selectedLanguage;
+
+    // Cross-Language Translation via Sarvam Translate Proxy (/api/voice/translate)
+    const translateResult = await voiceService.translate(text, srcLang, tgtLang);
+    const translatedNote = translateResult.translated_text;
 
     const newMsg: V2VVoiceMessage = {
       id: 'v2v_' + Date.now(),
@@ -192,7 +247,7 @@ export default function V2VRadioModule({
       duration_sec: 4,
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
       channel: selectedTargetVessel ? `Direct to ${selectedTargetVessel.name}` : 'Channel 16',
-      note: translation.is_translated ? translation.translated_text : text,
+      note: translatedNote !== text ? `[${getLanguageLabelName(tgtLang)}]: ${translatedNote}` : text,
       media_type: 'text',
       text_content: text
     };
@@ -200,16 +255,14 @@ export default function V2VRadioModule({
     setV2vMessages((prev) => [newMsg, ...prev]);
     emergencyRealtimeNetwork.broadcastV2VVoiceMessage(newMsg);
 
-    // Speak translated response if cross-language
-    if (translation.is_translated) {
-      audioService.speak(translation.translated_text, targetLang as any);
-    }
+    // Speak translated response for recipient vessel in their preferred language
+    voiceService.synthesize(translatedNote, tgtLang);
 
     setV2vTextInput('');
     setSelectedTargetVessel(null);
   };
 
-  // --- Trigger Platform Emergency Broadcast ---
+  // --- Trigger Blue Guard AI Vessel Emergency Broadcast (§9) ---
   const handleExecuteEmergencyBroadcast = () => {
     setShowEmergencyConfirmModal(false);
 
@@ -219,7 +272,7 @@ export default function V2VRadioModule({
       sender_name: currentShip.display_name || 'Captain',
       severity: 'CRITICAL' as const,
       alert_type: 'EMERGENCY_DISTRESS' as const,
-      message: `[PLATFORM EMERGENCY BROADCAST] ${emergencyReasonInput}`,
+      message: `[BLUE GUARD AI VESSEL EMERGENCY BROADCAST] Vessel #${currentShip.ship_id} reporting: ${emergencyReasonInput}`,
       latitude: currentShip.latitude || 13.0827,
       longitude: currentShip.longitude || 80.2707,
       destination: currentShip.destination || 'High Seas',
@@ -228,7 +281,7 @@ export default function V2VRadioModule({
 
     emergencyRealtimeNetwork.broadcastEmergency(newAlert);
     audioService.playEmergencyAlarm();
-    audioService.speak(`Platform emergency broadcast transmitted by ship ${currentShip.ship_id}`, 'en');
+    voiceService.synthesize(`Blue Guard AI Vessel Emergency Broadcast transmitted by ship ${currentShip.ship_id}`, selectedLanguage);
   };
 
   return (
@@ -243,29 +296,31 @@ export default function V2VRadioModule({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-extrabold text-white tracking-wider font-mono">
-                🎙️ V2V RADIO & VOICE AI COMMAND HUB
+                🎙️ V2V RADIO & SARVAM MULTILINGUAL VOICE HUB
               </h2>
               <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-mono font-bold">
                 CH 16 LIVE MESH
               </span>
+              {isDemoMode && (
+                <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 px-2 py-0.5 rounded font-mono font-bold animate-pulse">
+                  DEMO MODE — Sarvam AI Fallback Active
+                </span>
+              )}
             </div>
             <p className="text-[11px] text-cyan-300/80">
-              Inter-Vessel Voice Relay · Cross-Language Translation · Multi-Agent Intelligence
+              Sarvam STT/TTS · 9 Regional Languages · Cross-Vessel Translation · Vessel Emergency Broadcast
             </p>
           </div>
         </div>
 
         {/* Emergency Broadcast Action & Demo Fleet Tag */}
         <div className="flex items-center gap-2">
-          <span className="text-[10px] font-mono text-slate-400 bg-slate-900 px-2 py-1 rounded border border-slate-800">
-            Simulated V2V Fleet Mesh
-          </span>
           <button
             onClick={() => setShowEmergencyConfirmModal(true)}
             className="px-3.5 py-1.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-red-950 border border-red-500/40 flex items-center gap-1.5 transition transform active:scale-95"
           >
             <ShieldAlert className="w-4 h-4 text-white" />
-            <span>PLATFORM EMERGENCY BROADCAST</span>
+            <span>BLUE GUARD AI VESSEL EMERGENCY BROADCAST</span>
           </button>
         </div>
       </div>
@@ -273,59 +328,81 @@ export default function V2VRadioModule({
       {/* 2. GRID: VOICE ASSISTANT (LEFT) + V2V CROSS-LANGUAGE COMMS (RIGHT) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* === LEFT COLUMN: VOICE ASSISTANT (5 STATES) === */}
+        {/* === LEFT COLUMN: SARVAM MULTILINGUAL VOICE ASSISTANT (§5 VISIBLE STATES) === */}
         <div className="lg:col-span-5 p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex flex-col justify-between space-y-4">
           
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
               <span className="text-xs font-mono font-bold text-cyan-200 uppercase tracking-wider">
-                AGENTIC VOICE ASSISTANT
+                SARVAM MULTILINGUAL VOICE AI
               </span>
             </div>
 
-            {/* Language Selector Dropback */}
+            {/* Language Selector Dropdown with Native Script Labels (§6) */}
             <div className="flex items-center gap-1">
               <Languages className="w-3.5 h-3.5 text-cyan-400" />
               <select
                 value={selectedLanguage}
-                onChange={(e) => setSelectedLanguage(e.target.value)}
+                onChange={(e) => {
+                  setSelectedLanguage(e.target.value);
+                  setDetectedLangLabel(getLanguageLabelName(e.target.value));
+                }}
                 className="bg-slate-900 text-cyan-300 text-[11px] font-mono border border-cyan-800 rounded px-2 py-1 focus:outline-none"
               >
-                <option value="en">English</option>
-                <option value="ta">தமிழ் (Tamil)</option>
-                <option value="hi">हिंदी (Hindi)</option>
-                <option value="te">తెలుగు (Telugu)</option>
-                <option value="ml">മലയാളം (Malayalam)</option>
-                <option value="kn">ಕನ್ನಡ (Kannada)</option>
-                <option value="bn">বাংলা (Bengali)</option>
-                <option value="mr">मराठी (Marathi)</option>
-                <option value="gu">ગુજરાતી (Gujarati)</option>
+                <option value="en-IN">English (en-IN)</option>
+                <option value="ta-IN">தமிழ் (Tamil)</option>
+                <option value="hi-IN">हिंदी (Hindi)</option>
+                <option value="te-IN">తెలుగు (Telugu)</option>
+                <option value="ml-IN">മലയാളം (Malayalam)</option>
+                <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
+                <option value="bn-IN">বাংলা (Bengali)</option>
+                <option value="mr-IN">मराठी (Marathi)</option>
+                <option value="gu-IN">ગુજરાતી (Gujarati)</option>
               </select>
             </div>
           </div>
 
-          {/* 5 VISUAL STATES BADGE */}
-          <div className="flex items-center justify-center gap-2">
+          {/* §5 VISIBLE VOICE STATES SEQUENCE BADGES */}
+          <div className="flex flex-wrap items-center justify-center gap-2">
             <span
               className={`px-3 py-1 rounded-full text-xs font-mono font-extrabold border shadow-lg transition-all ${
-                voiceState === 'Voice Ready'
-                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500/50'
+                voiceState === 'Ready'
+                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500/50'
                   : voiceState === 'Listening'
                   ? 'bg-rose-950 text-rose-300 border-rose-500 animate-pulse'
                   : voiceState === 'Processing'
                   ? 'bg-amber-950 text-amber-300 border-amber-500 animate-bounce'
+                  : voiceState === 'Detected'
+                  ? 'bg-cyan-950 text-cyan-300 border-cyan-500'
                   : voiceState === 'Speaking'
-                  ? 'bg-emerald-950 text-emerald-300 border-emerald-500'
+                  ? 'bg-teal-950 text-teal-300 border-teal-500'
                   : 'bg-slate-900 text-slate-400 border-slate-700'
               }`}
             >
-              STATE: {voiceState.toUpperCase()}
-            </span>
-            <span className="text-[10px] font-mono text-slate-400">
-              Lang: <strong className="text-cyan-300">{detectedLangLabel}</strong>
+              {voiceState === 'Ready' && '🟢 READY'}
+              {voiceState === 'Listening' && '🎙️ LISTENING...'}
+              {voiceState === 'Processing' && '🧠 PROCESSING'}
+              {voiceState === 'Detected' && `🌐 DETECTED: ${detectedLangLabel}`}
+              {voiceState === 'Speaking' && `🔊 SPEAKING IN ${detectedLangLabel}`}
+              {voiceState === 'Error' && '🔴 ERROR'}
+              {voiceState === 'Mic Off' && '⚪ MIC OFF'}
             </span>
           </div>
+
+          {/* LOW CONFIDENCE LANGUAGE DETECTED WARNING (§6) */}
+          {isLowConfidenceLang && (
+            <div className="p-2 bg-amber-950/80 border border-amber-500/50 rounded-xl text-[11px] text-amber-200 font-mono text-center">
+              Language not confidently detected. Please select your language manually from the dropdown above.
+            </div>
+          )}
+
+          {/* ERROR MESSAGE DISPLAY (§8) */}
+          {voiceErrorMessage && (
+            <div className="p-2 bg-red-950/80 border border-red-500/50 rounded-xl text-[11px] text-red-200 font-mono text-center">
+              {voiceErrorMessage}
+            </div>
+          )}
 
           {/* CENTRAL TAP TO SPEAK BUTTON */}
           <div className="flex flex-col items-center justify-center py-2">
@@ -343,145 +420,151 @@ export default function V2VRadioModule({
                   : voiceState === 'Processing'
                   ? 'bg-gradient-to-tr from-amber-600 to-yellow-500 ring-8 ring-amber-500/30'
                   : voiceState === 'Speaking'
-                  ? 'bg-gradient-to-tr from-emerald-600 to-teal-500 ring-8 ring-emerald-500/30'
+                  ? 'bg-gradient-to-tr from-teal-600 to-emerald-500 ring-8 ring-teal-500/30'
                   : 'bg-gradient-to-tr from-cyan-600 via-teal-600 to-blue-600 hover:scale-105 ring-4 ring-cyan-500/20'
               }`}
             >
               {voiceState === 'Mic Off' ? (
                 <MicOff className="w-8 h-8 text-slate-400" />
               ) : voiceState === 'Listening' ? (
-                <Mic className="w-8 h-8 text-white animate-bounce" />
+                <Mic className="w-8 h-8 text-white animate-pulse" />
               ) : (
                 <Mic className="w-8 h-8 text-white" />
               )}
             </button>
-            <p className="text-[11px] font-mono text-cyan-300 mt-2">
-              {voiceState === 'Listening' ? 'Tap to Stop Listening' : 'Tap Central Mic to Ask BlueGuard AI'}
-            </p>
+            <span className="text-[11px] font-mono text-cyan-300 font-bold mt-2">
+              {voiceState === 'Listening' ? 'Tap to Stop' : 'Tap to Speak'}
+            </span>
           </div>
 
-          {/* Fallback Error Message Box */}
-          {voiceErrorMessage && (
-            <div className="p-2.5 bg-rose-950/80 border border-rose-500/50 rounded-xl text-xs text-rose-300 flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{voiceErrorMessage}</span>
+          {/* LIVE TRANSCRIPT & RESPONSE DISPLAY BOX (§5 SEQUENCE) */}
+          <div className="space-y-2 bg-slate-900/80 p-3 rounded-xl border border-slate-800 font-mono text-xs">
+            <div>
+              <span className="text-slate-400 font-bold">You said:</span>{' '}
+              <span className="text-cyan-200 italic">
+                {liveTranscript ? `"${liveTranscript}"` : '(Awaiting voice input...)'}
+              </span>
             </div>
-          )}
 
-          {/* Transcript & AI Response Area */}
-          {(liveTranscript || aiResponseText) && (
-            <div className="p-3 bg-slate-900/90 rounded-xl border border-cyan-800 space-y-2 text-xs">
-              {liveTranscript && (
-                <p className="text-cyan-200 font-mono">
-                  <strong className="text-cyan-400">Speech Input:</strong> "{liveTranscript}"
+            {aiResponseText && (
+              <div className="pt-2 border-t border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-emerald-400 font-bold">Blue Guard AI ({detectedLangLabel}):</span>
+                  {/* Replay & Stop Audio Controls (§4) */}
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={handleReplayResponse}
+                      title="Replay Voice Response"
+                      className="px-2 py-0.5 bg-emerald-950 text-emerald-300 border border-emerald-700 rounded text-[10px] hover:bg-emerald-900 flex items-center gap-1"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Replay
+                    </button>
+                    <button
+                      onClick={handleStopResponse}
+                      title="Stop Voice Playback"
+                      className="px-2 py-0.5 bg-slate-800 text-slate-300 border border-slate-700 rounded text-[10px] hover:bg-slate-700 flex items-center gap-1"
+                    >
+                      <Square className="w-3 h-3 text-red-400" /> Stop
+                    </button>
+                  </div>
+                </div>
+                <p className="text-slate-200 mt-1 font-sans text-xs italic">
+                  "{aiResponseText}"
                 </p>
-              )}
-              {aiResponseText && (
-                <p className="text-emerald-200 font-sans leading-relaxed">
-                  <strong className="text-emerald-400">AI Advisory:</strong> "{aiResponseText}"
-                </p>
-              )}
-            </div>
-          )}
-
+              </div>
+            )}
+          </div>
         </div>
 
-        {/* === RIGHT COLUMN: V2V VESSEL MESH & CROSS-LANGUAGE COMMS === */}
-        <div className="lg:col-span-7 p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex flex-col justify-between space-y-3">
+        {/* === RIGHT COLUMN: V2V CROSS-LANGUAGE INTER-VESSEL COMMS (§9) === */}
+        <div className="lg:col-span-7 p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex flex-col justify-between space-y-4">
           
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-            <span className="text-xs font-mono font-bold text-cyan-200 uppercase tracking-wider flex items-center gap-1.5">
-              <Radio className="w-4 h-4 text-cyan-400" /> NEARBY VESSEL ROSTER (CROSS-LANGUAGE V2V)
-            </span>
-            <span className="text-[10px] font-mono text-cyan-400">
-              {nearbyVessels.length} Vessels Online
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 text-cyan-400 animate-pulse" />
+              <span className="text-xs font-mono font-bold text-cyan-200 uppercase tracking-wider">
+                V2V CROSS-LANGUAGE VESSEL MESH (CHANNEL 16)
+              </span>
+            </div>
+            <span className="text-[10px] text-cyan-400 font-mono">
+              Sarvam Live Translation
             </span>
           </div>
 
-          {/* Offline Warning Banner */}
+          {/* Offline Alert Warning */}
           {offlineAlertMessage && (
-            <div className="p-2 bg-amber-950/90 border border-amber-500/50 rounded-xl text-xs text-amber-300 font-mono flex items-center gap-2">
-              <Info className="w-4 h-4 text-amber-400" />
-              <span>{offlineAlertMessage}</span>
+            <div className="p-2 bg-amber-950/90 border border-amber-500/50 rounded-xl text-xs text-amber-200 font-mono animate-pulse">
+              ⚠️ {offlineAlertMessage}
             </div>
           )}
 
-          {/* NEARBY VESSELS HORIZONTAL ROSTER */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-            {nearbyVessels.slice(0, 4).map((vessel) => {
-              const isSelected = selectedTargetVessel?.ship_id === vessel.ship_id;
-              const isOffline = vessel.status === 'OFFLINE';
-              return (
+          {/* Target Vessel Quick Direct Radio Selector */}
+          <div className="space-y-1">
+            <label className="text-[10px] font-mono uppercase text-slate-400">
+              SELECT TARGET RECIPIENT VESSEL:
+            </label>
+            <div className="flex flex-wrap gap-1.5">
+              <button
+                onClick={() => setSelectedTargetVessel(null)}
+                className={`px-2.5 py-1 rounded text-[11px] font-mono transition ${
+                  selectedTargetVessel === null
+                    ? 'bg-cyan-600 text-white font-bold'
+                    : 'bg-slate-900 text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Broadcast (Channel 16)
+              </button>
+              {nearbyVessels.map((vessel) => (
                 <button
                   key={vessel.ship_id}
-                  onClick={() => {
-                    if (isOffline) {
-                      setOfflineAlertMessage(`Vessel ${vessel.name} is currently unavailable.`);
-                      setTimeout(() => setOfflineAlertMessage(null), 4000);
-                      return;
-                    }
-                    setSelectedTargetVessel(isSelected ? null : vessel);
-                  }}
-                  className={`p-2 rounded-xl text-left border text-[11px] font-mono transition ${
-                    isOffline
-                      ? 'bg-slate-900/50 border-slate-800 opacity-60 cursor-not-allowed'
-                      : isSelected
-                      ? 'bg-cyan-950 border-cyan-400 font-bold text-white shadow-lg'
-                      : 'bg-slate-900 border-slate-800 hover:border-cyan-600 text-slate-300'
+                  onClick={() => setSelectedTargetVessel(vessel)}
+                  className={`px-2.5 py-1 rounded text-[11px] font-mono flex items-center gap-1 transition ${
+                    selectedTargetVessel?.ship_id === vessel.ship_id
+                      ? 'bg-cyan-600 text-white font-bold'
+                      : 'bg-slate-900 text-slate-400 hover:text-slate-200'
                   }`}
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="truncate text-cyan-300">{vessel.name}</span>
-                    <span className={`w-2 h-2 rounded-full ${isOffline ? 'bg-slate-600' : 'bg-emerald-400 animate-pulse'}`} />
-                  </div>
-                  <div className="text-[10px] text-slate-400 mt-1">
-                    {vessel.distance_nm} NM | #{vessel.ship_id.slice(-4)}
-                  </div>
-                  {isOffline && (
-                    <div className="text-[9px] text-rose-400 font-semibold mt-0.5">UNAVAILABLE</div>
-                  )}
+                  <Ship className="w-3 h-3" />
+                  <span>{vessel.name}</span>
+                  <span className={`w-2 h-2 rounded-full ${vessel.status === 'ONLINE' ? 'bg-emerald-400' : 'bg-rose-500'}`} />
                 </button>
-              );
-            })}
+              ))}
+            </div>
           </div>
 
-          {/* V2V MESSAGES LOG (WITH SIDE-BY-SIDE TRANSLATION) */}
-          <div className="flex-1 max-h-[160px] overflow-y-auto space-y-2 p-2 bg-slate-900/60 rounded-xl border border-slate-800 font-sans text-xs">
+          {/* V2V Messages Feed */}
+          <div className="flex-1 max-h-48 overflow-y-auto space-y-2 p-2 bg-slate-900/60 rounded-xl border border-slate-800 text-xs font-mono">
             {v2vMessages.map((msg) => (
-              <div key={msg.id} className="p-2 bg-slate-950 rounded-lg border border-slate-800 space-y-1">
-                <div className="flex items-center justify-between font-mono text-[10px] text-cyan-300">
-                  <span>{msg.sender_name} (#{msg.sender_ship_id})</span>
-                  <span className="text-slate-500">{msg.timestamp}</span>
+              <div key={msg.id} className="p-2 bg-slate-950 rounded-lg border border-cyan-900/40">
+                <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
+                  <span className="text-cyan-300 font-bold">{msg.sender_name} ({msg.sender_ship_id})</span>
+                  <span>{msg.timestamp} · {msg.channel}</span>
                 </div>
-                <p className="text-slate-200">{msg.text_content || msg.note}</p>
-                {msg.note && msg.note !== msg.text_content && (
-                  <p className="text-[11px] text-emerald-300 font-mono bg-emerald-950/60 p-1 rounded border border-emerald-800">
-                    🌐 <strong>Translated Text:</strong> {msg.note}
-                  </p>
-                )}
+                <p className="text-slate-200 text-xs">
+                  {msg.note || msg.text_content}
+                </p>
               </div>
             ))}
           </div>
 
-          {/* COMPOSER & TRANSMIT BUTTON */}
-          <div className="flex items-center gap-2 pt-1">
+          {/* V2V Dispatch Text & Audio Input */}
+          <div className="flex gap-2">
             <input
               type="text"
               value={v2vTextInput}
               onChange={(e) => setV2vTextInput(e.target.value)}
               placeholder={
                 selectedTargetVessel
-                  ? `Direct message to ${selectedTargetVessel.name}...`
+                  ? `Message to ${selectedTargetVessel.name} (auto-translates)...`
                   : 'Broadcast to Channel 16 fleet...'
               }
-              className="flex-1 px-3 py-2 bg-slate-950 border border-slate-800 rounded-xl text-xs text-white focus:outline-none focus:border-cyan-400 font-sans"
+              className="flex-1 px-3 py-2 bg-slate-950 border border-slate-700 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-cyan-400"
             />
             <button
               onClick={() => handleSendV2VDispatch()}
-              className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-lg shadow-cyan-950 font-mono"
+              className="px-4 py-2 bg-gradient-to-r from-cyan-600 to-teal-600 rounded-xl text-xs font-extrabold text-white shadow-md shadow-cyan-500/20 hover:scale-105 transition-transform flex items-center gap-1.5"
             >
-              <Send className="w-3.5 h-3.5" />
-              <span>TRANSMIT</span>
+              <Send className="w-3.5 h-3.5" /> Dispatch
             </button>
           </div>
 
@@ -489,53 +572,47 @@ export default function V2VRadioModule({
 
       </div>
 
-      {/* 3. PLATFORM EMERGENCY BROADCAST CONFIRMATION MODAL */}
+      {/* 3. BLUE GUARD AI VESSEL EMERGENCY BROADCAST CONFIRMATION MODAL (§9) */}
       {showEmergencyConfirmModal && (
-        <div className="fixed inset-0 z-[5000] bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="w-full max-w-md bg-slate-900 border-2 border-red-500/60 rounded-3xl p-6 shadow-2xl space-y-4 animate-in zoom-in-95">
-            <div className="flex items-center gap-3 text-red-400 border-b border-red-900/60 pb-3">
-              <ShieldAlert className="w-7 h-7 text-red-500 animate-pulse" />
-              <div>
-                <h3 className="text-base font-extrabold font-mono text-white">
-                  CONFIRM PLATFORM EMERGENCY BROADCAST
-                </h3>
-                <p className="text-xs text-red-300">Requires Captain Confirmation Step</p>
-              </div>
+        <div className="fixed inset-0 z-[100000] bg-slate-950/90 backdrop-blur-md flex items-center justify-center p-4">
+          <div className="max-w-md w-full glass-panel-crimson p-6 rounded-3xl border-2 border-rose-500 shadow-2xl space-y-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto border border-rose-500/50">
+              <ShieldAlert className="w-10 h-10 animate-bounce" />
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed font-sans">
-              You are about to transmit a high-priority distress broadcast across the <strong>Platform V2V Emergency Mesh</strong> to all ships within 50 NM.
-            </p>
-
             <div>
-              <label className="block text-[11px] font-mono text-slate-400 uppercase mb-1">
-                Emergency Distress Reason:
+              <h3 className="text-lg font-extrabold text-white font-mono uppercase tracking-wider">
+                BLUE GUARD AI VESSEL EMERGENCY BROADCAST
+              </h3>
+              <p className="text-xs text-rose-200 mt-1">
+                This transmits a distress broadcast across the BlueGuard AI platform mesh, nearby vessel radios, and alert channels.
+              </p>
+            </div>
+
+            <div className="text-left">
+              <label className="block text-[10px] font-mono uppercase text-rose-300 mb-1">
+                EMERGENCY REASON:
               </label>
               <input
                 type="text"
                 value={emergencyReasonInput}
                 onChange={(e) => setEmergencyReasonInput(e.target.value)}
-                className="w-full px-3 py-2 bg-slate-950 border border-red-500/50 rounded-xl text-xs text-red-200 font-mono"
+                className="w-full px-3 py-2 bg-slate-950 border border-rose-500/50 rounded-xl text-xs font-semibold text-white focus:outline-none focus:border-rose-400"
               />
             </div>
 
-            <div className="p-2.5 bg-red-950/60 rounded-xl border border-red-800 text-[11px] text-red-300 font-mono flex items-center gap-2">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              <span>Broadcast includes Vessel ID #{currentShip.ship_id} & current GPS coordinates.</span>
-            </div>
-
-            <div className="flex items-center justify-end gap-3 pt-2">
+            <div className="flex gap-2 pt-2">
               <button
                 onClick={() => setShowEmergencyConfirmModal(false)}
-                className="px-4 py-2 bg-slate-800 text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-700"
+                className="flex-1 py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-300 text-xs font-bold rounded-xl border border-slate-700"
               >
                 Cancel
               </button>
               <button
                 onClick={handleExecuteEmergencyBroadcast}
-                className="px-5 py-2 bg-red-600 hover:bg-red-500 text-white rounded-xl text-xs font-extrabold shadow-lg shadow-red-950 flex items-center gap-1.5"
+                className="flex-1 py-2.5 bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-500 hover:to-rose-500 text-white text-xs font-extrabold rounded-xl shadow-lg shadow-red-950 border border-red-400 flex items-center justify-center gap-1.5"
               >
-                <ShieldAlert className="w-4 h-4" /> CONFIRM & BROADCAST DISTRESS
+                <ShieldAlert className="w-4 h-4" /> CONFIRM BROADCAST
               </button>
             </div>
           </div>
