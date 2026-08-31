@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { Waypoint, NearbyVessel, CycloneHazard, WindData, TideData, SSTData, ChlorophyllData } from '@/lib/types';
-import { getMockSSTData, getMockChlorophyllData, getMockWeatherData } from '@/lib/marineData';
-import { Shield, Navigation, Wind, Waves, AlertTriangle, Ship, Compass, Radio, Thermometer, Sprout, Sparkles, X, MessageSquarePlus } from 'lucide-react';
+import { getMockSSTData, getMockChlorophyllData, getMockWeatherData, PFZ_ZONES } from '@/lib/marineData';
+import { geospatialAgent } from '@/lib/agenticOrchestrator';
+import { Shield, Navigation, Wind, Waves, AlertTriangle, Ship, Compass, Radio, Thermometer, Sprout, Sparkles, X, MessageSquarePlus, MapPin, Fish } from 'lucide-react';
 
 interface MarineMapProps {
   currentShip: NearbyVessel;
@@ -36,6 +37,7 @@ export default function MarineMap({
   const [layers, setLayers] = useState({
     route: true,
     vessels: true,
+    fishermanZone: true,
     wind: true,
     tide: true,
     cyclone: true,
@@ -175,6 +177,15 @@ export default function MarineMap({
             className="accent-teal-500 rounded"
           />
           Vessels
+        </label>
+        <label className="flex items-center gap-1 cursor-pointer text-emerald-300 hover:text-emerald-100 font-bold bg-emerald-950/60 px-2 py-0.5 rounded border border-emerald-500/40">
+          <input
+            type="checkbox"
+            checked={layers.fishermanZone}
+            onChange={(e) => setLayers({ ...layers, fishermanZone: e.target.checked })}
+            className="accent-emerald-400 rounded"
+          />
+          Fisherman Zone
         </label>
         <label className="flex items-center gap-1 cursor-pointer text-amber-300 hover:text-amber-100">
           <input
@@ -396,6 +407,96 @@ export default function MarineMap({
               </Marker>
             );
           })}
+
+        {/* Fisherman Zone Layer (🟢 Safe PFZ · 🟡 Caution · 🔴 Hazard/Restricted) */}
+        {layers.fishermanZone &&
+          PFZ_ZONES.map((zone) => {
+            const distKm = Math.round(
+              geospatialAgent.calculateDistanceKm(currentShip.lat, currentShip.lon, zone.lat, zone.lon) * 10
+            ) / 10;
+
+            const color =
+              zone.type === 'SAFE_PFZ'
+                ? '#10b981'
+                : zone.type === 'CAUTION_ZONE'
+                ? '#f59e0b'
+                : '#ef4444';
+
+            return (
+              <Circle
+                key={zone.id}
+                center={[zone.lat, zone.lon]}
+                radius={zone.radius_km * 1000}
+                pathOptions={{
+                  color,
+                  fillColor: color,
+                  fillOpacity: 0.28,
+                  weight: 2
+                }}
+              >
+                <Popup>
+                  <div className="p-2 text-slate-900 text-xs space-y-1.5 max-w-xs font-sans">
+                    <div className="flex items-center justify-between font-mono border-b pb-1">
+                      <span className="font-extrabold text-cyan-900 flex items-center gap-1">
+                        🐟 {zone.name}
+                      </span>
+                      <span className="text-[9px] bg-slate-200 text-slate-700 px-1 rounded font-bold">
+                        {zone.type}
+                      </span>
+                    </div>
+
+                    <p className="text-[11px] text-slate-600 italic">
+                      Demo Data — live PFZ API not connected
+                    </p>
+
+                    <div className="font-mono text-[11px] bg-slate-100 p-2 rounded space-y-0.5">
+                      <p>📍 <strong>Distance from vessel:</strong> {distKm} km</p>
+                      <p>🌡️ <strong>SST:</strong> {zone.sst_c}°C</p>
+                      <p>🌿 <strong>Chlorophyll:</strong> {zone.chlorophyll} mg/m³</p>
+                      <p>🌊 <strong>Waves / Wind:</strong> {zone.wave_m}m | {zone.wind_kts} kts</p>
+                      <p>🐟 <strong>Species:</strong> {zone.fish_species.join(', ')}</p>
+                    </div>
+
+                    <p className="text-[11px] font-medium text-slate-800 bg-amber-50 p-1.5 rounded border border-amber-200">
+                      {zone.recommendation}
+                    </p>
+
+                    <div className="pt-1 flex items-center justify-between">
+                      <button
+                        onClick={() => {
+                          if (onAskBlueGuardArea) {
+                            onAskBlueGuardArea(
+                              zone.lat,
+                              zone.lon,
+                              `Analyze fishing conditions for ${zone.name} (SST ${zone.sst_c}°C, Chlorophyll ${zone.chlorophyll} mg/m³).`
+                            );
+                          }
+                        }}
+                        className="w-full py-1 bg-cyan-700 hover:bg-cyan-600 text-white font-bold rounded text-[11px] flex items-center justify-center gap-1"
+                      >
+                        <Sparkles className="w-3 h-3 text-cyan-200" /> Ask Blue Guard AI About Zone
+                      </button>
+                    </div>
+                  </div>
+                </Popup>
+              </Circle>
+            );
+          })}
+
+        {/* International Maritime Boundary Line (IMBL) */}
+        <Polyline
+          positions={[
+            [10.0, 79.5],
+            [10.0, 80.0],
+            [9.8, 80.25],
+            [9.4, 80.0]
+          ]}
+          pathOptions={{ color: '#ef4444', weight: 3, dashArray: '6, 6', opacity: 0.9 }}
+        >
+          <Tooltip permanent={true}>
+            ⚠️ International Maritime Boundary Line (IMBL) - India / Sri Lanka (Demo GIS)
+          </Tooltip>
+        </Polyline>
 
         {/* Cyclone Translucent Hazard Zone */}
         {layers.cyclone && cycloneData && (

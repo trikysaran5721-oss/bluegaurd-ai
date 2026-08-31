@@ -11,6 +11,85 @@ export const DEMO_PORTS: Record<string, DemoPort> = {
   Chittagong: { name: 'Chittagong', lat: 22.3569, lon: 91.7832, country: 'Bangladesh' }
 };
 
+export interface PFZone {
+  id: string;
+  name: string;
+  lat: number;
+  lon: number;
+  radius_km: number;
+  type: 'SAFE_PFZ' | 'CAUTION_ZONE' | 'HAZARD_RESTRICTED';
+  sst_c: number;
+  chlorophyll: number;
+  wave_m: number;
+  wind_kts: number;
+  fish_species: string[];
+  recommendation: string;
+  boundary_notes: string;
+}
+
+export const PFZ_ZONES: PFZone[] = [
+  {
+    id: 'pfz-01',
+    name: 'Palk Bay North PFZ (High Tuna & Sardine Zone)',
+    lat: 10.35,
+    lon: 79.95,
+    radius_km: 18,
+    type: 'SAFE_PFZ',
+    sst_c: 28.8,
+    chlorophyll: 1.45,
+    wave_m: 1.2,
+    wind_kts: 14,
+    fish_species: ['Yellowfin Tuna', 'Indian Oil Sardine', 'Mackerel'],
+    recommendation: '🟢 Recommended Fishing Ground: High chlorophyll concentration & calm seas (1.2m waves).',
+    boundary_notes: 'Well within Indian territorial waters (18.5 km north of IMBL).'
+  },
+  {
+    id: 'pfz-02',
+    name: 'Point Calimere Offshore PFZ (Mackerel Swarm)',
+    lat: 10.25,
+    lon: 80.20,
+    radius_km: 22,
+    type: 'SAFE_PFZ',
+    sst_c: 29.2,
+    chlorophyll: 1.82,
+    wave_m: 1.5,
+    wind_kts: 16,
+    fish_species: ['King Mackerel', 'Seer Fish', 'Ribbon Fish'],
+    recommendation: '🟢 Prime Fishing Ground: Strong thermal front detected with peak biomass upwelling.',
+    boundary_notes: 'Clear of shipping lanes. Maintain standard navigational watch.'
+  },
+  {
+    id: 'pfz-03',
+    name: 'Palk Strait Boundary Caution Zone',
+    lat: 10.02,
+    lon: 79.88,
+    radius_km: 15,
+    type: 'CAUTION_ZONE',
+    sst_c: 29.5,
+    chlorophyll: 0.88,
+    wave_m: 2.1,
+    wind_kts: 22,
+    fish_species: ['Snapper', 'Squid'],
+    recommendation: '🟡 Caution Zone: High swell (2.1m) & close proximity (5 km) to IMBL maritime boundary.',
+    boundary_notes: '⚠️ PROXIMITY ALERT: Do not drift southeast into Sri Lanka territorial waters.'
+  },
+  {
+    id: 'pfz-04',
+    name: 'Gulf of Mannar Marine Reserve (Protected)',
+    lat: 9.20,
+    lon: 79.15,
+    radius_km: 25,
+    type: 'HAZARD_RESTRICTED',
+    sst_c: 28.1,
+    chlorophyll: 2.10,
+    wave_m: 1.1,
+    wind_kts: 12,
+    fish_species: ['Protected Coral Reef Fauna', 'Dugong Sanctuary'],
+    recommendation: '🔴 Restricted Zone: Strictly prohibited commercial fishing area (Marine Biosphere Reserve).',
+    boundary_notes: '🚫 Restricted National Park Waters.'
+  }
+];
+
 export const INITIAL_DEMO_FLEET: NearbyVessel[] = [
   {
     ship_id: "123456789012",
