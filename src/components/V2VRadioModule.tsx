@@ -31,6 +31,7 @@ import { voiceRecognitionService } from '@/lib/voiceRecognition';
 import { voiceService } from '@/lib/voiceService';
 import { emergencyRealtimeNetwork } from '@/lib/emergencyRealtime';
 import { communicationAgent, multilingualVoiceAgent } from '@/lib/agenticOrchestrator';
+import { detectLanguage } from '@/lib/languageDetector';
 
 interface V2VRadioModuleProps {
   currentShip: ShipProfile;
@@ -152,23 +153,22 @@ export default function V2VRadioModule({
     setVoiceState('Processing');
 
     try {
-      // 1. Send query to Sarvam STT / Voice Transcribe Proxy
-      const transcribeRes = await voiceService.transcribe(undefined, selectedLanguage, queryText);
-      
-      const detectedCode = transcribeRes.language_code || selectedLanguage;
+      // Auto-detect language from query text
+      const detected = detectLanguage(queryText);
+      const detectedCode = detected.fullCode;
       setDetectedLangCode(detectedCode);
-      setDetectedLangLabel(getLanguageLabelName(detectedCode));
-      setIsDemoMode(transcribeRes.is_demo_mode);
+      setDetectedLangLabel(detected.label);
+      setSelectedLanguage(detectedCode);
       setVoiceState('Detected');
 
-      // 2. Query Agentic LLM System (ChatGPT / Gemini / Multilingual Generator)
+      // Send query to Agentic LLM System (/api/agent)
       const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           query: queryText,
           ship_id: currentShip.ship_id,
-          language: detectedCode.split('-')[0],
+          language: 'auto',
           destination: currentShip.destination || 'Colombo'
         })
       });
@@ -177,6 +177,9 @@ export default function V2VRadioModule({
       if (res.ok) {
         const data = await res.json();
         answer = data.answer;
+        if (data.detected_language) {
+          setDetectedLangLabel(data.detected_language);
+        }
       } else {
         answer = `BlueGuard Advisory: Weather near ${currentShip.destination || 'Colombo'} is experiencing 22 knots NE wind.`;
       }
@@ -184,7 +187,7 @@ export default function V2VRadioModule({
       setAiResponseText(answer);
       setVoiceState('Speaking');
 
-      // 3. Synthesize Voice using Sarvam TTS (bulbul:v1)
+      // Synthesize Voice response in detected native language
       const synthResult = await voiceService.synthesize(answer, detectedCode);
       if (synthResult.is_demo_mode) {
         setIsDemoMode(true);
@@ -339,27 +342,10 @@ export default function V2VRadioModule({
               </span>
             </div>
 
-            {/* Language Selector Dropdown with Native Script Labels (§6) */}
-            <div className="flex items-center gap-1">
-              <Languages className="w-3.5 h-3.5 text-cyan-400" />
-              <select
-                value={selectedLanguage}
-                onChange={(e) => {
-                  setSelectedLanguage(e.target.value);
-                  setDetectedLangLabel(getLanguageLabelName(e.target.value));
-                }}
-                className="bg-slate-900 text-cyan-300 text-[11px] font-mono border border-cyan-800 rounded px-2 py-1 focus:outline-none"
-              >
-                <option value="en-IN">English (en-IN)</option>
-                <option value="ta-IN">தமிழ் (Tamil)</option>
-                <option value="hi-IN">हिंदी (Hindi)</option>
-                <option value="te-IN">తెలుగు (Telugu)</option>
-                <option value="ml-IN">മലയാളം (Malayalam)</option>
-                <option value="kn-IN">ಕನ್ನಡ (Kannada)</option>
-                <option value="bn-IN">বাংলা (Bengali)</option>
-                <option value="mr-IN">मराठी (Marathi)</option>
-                <option value="gu-IN">ગુજરાતી (Gujarati)</option>
-              </select>
+            {/* Auto Detected Language Badge */}
+            <div className="flex items-center gap-1.5 bg-cyan-950 px-2.5 py-1 rounded-lg border border-cyan-700/60 font-mono text-[11px] text-cyan-200">
+              <Languages className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <span>AUTO DETECT: <strong className="text-emerald-400 font-bold">{detectedLangLabel}</strong></span>
             </div>
           </div>
 
