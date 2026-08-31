@@ -20,29 +20,53 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
     voiceRecognitionService.setLanguage(language);
 
     // Auto-request microphone permission on website open for wake word ("Hey BlueGuard")
-    voiceRecognitionService.requestMicPermissionAndListen(() => {
-      setIsActive(true);
-      setIsListening(true);
-      const greetings: Record<string, string> = {
-        en: 'BlueGuard active. How can I assist your voyage?',
-        ta: 'புளூகார்ட் தயார். உங்களுக்கு எவ்வாறு உதவ வேண்டும்?',
-        hi: 'ब्लूगार्ड सक्रिय है। मैं आपकी सहायता कैसे कर सकता हूँ?',
-        te: 'బ్లూగార్డ్ యాక్టివ్‌గా ఉంది. నేను మీకు ఎలా సహాయపడగలను?',
-        ml: 'ബ്ലൂഗാർഡ് സജീവമാണ്. എങ്ങനെ സഹായിക്കണം?',
-        kn: 'ಬ್ಲೂಗಾರ್ಡ್ ಸಕ್ರಿಯವಾಗಿದೆ. ನಾನು ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?',
-        bn: 'ব্লুগার্ড সক্রিয়। কীভাবে আপনাকে সাহায্য করতে পারি?',
-        mr: 'ब्लूगार्ड सक्रिय आहे. मी तुम्हाला कशी मदत करू शकतो?',
-        gu: 'બ્લૂગાર્ડ સક્રિય છે. હું તમને કેવી રીતે મદદ કરી શકું?'
-      };
+    voiceRecognitionService.requestMicPermissionAndListen(
+      () => {
+        // Wake Word Triggered Callback
+        setIsActive(true);
+        setIsListening(true);
+        setTranscript('');
 
-      const greetingText = greetings[language] || greetings.en;
-      audioService.speak(greetingText, language);
-    });
+        const greetings: Record<string, string> = {
+          en: 'BlueGuard active. How can I assist your voyage?',
+          ta: 'புளூகார்ட் தயார். உங்களுக்கு எவ்வாறு உதவ வேண்டும்?',
+          hi: 'ब्लूगार्ड सक्रिय है। मैं आपकी सहायता कैसे कर सकता हूँ?',
+          te: 'బ్లూగార్డ్ యాక్టివ్‌గా ఉంది. నేను మీకు ఎలా సహాయపడగలను?',
+          ml: 'ബ്ലൂഗാർഡ് സജീവമാണ്. എങ്ങനെ സഹായിക്കണം?',
+          kn: 'ಬ್ಲೂಗಾರ್ಡ್ ಸಕ್ರಿಯವಾಗಿದೆ. ನಾನು ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?',
+          bn: 'ব্লুগার্ড সক্রিয়। কীভাবে আপনাকে সাহায্য করতে পারি?',
+          mr: 'ब्लूगार्ड सक्रिय आहे. मी तुम्हाला कशी मदत करू शकतो?',
+          gu: 'બ્લૂગાર્ડ સક્રિય છે. હું તમને કેવી રીતે મદદ કરી શકું?'
+        };
+
+        const greetingText = greetings[language] || greetings.en;
+        audioService.speak(greetingText, language);
+      },
+      (text, isFinal) => {
+        // Continuous Live Speech Transcript Receiver
+        if (text && text.trim().length > 0) {
+          setTranscript(text);
+
+          if (isFinal && text.trim().length > 2) {
+            handleFinalVoiceQuery(text.trim());
+          }
+        }
+      }
+    );
   }, [language]);
 
   const isEmergencyQuery = (text: string) => {
     const lower = text.toLowerCase();
-    return lower.includes('emergency') || lower.includes('alert') || lower.includes('sos') || lower.includes('distress') || lower.includes('blueguard emergency') || lower.includes('blue gaurd emergency');
+    return lower.includes('emergency') || lower.includes('alert') || lower.includes('sos') || lower.includes('distress') || lower.includes('blueguard emergency') || lower.includes('ஆபத்து');
+  };
+
+  const handleFinalVoiceQuery = (queryText: string) => {
+    if (isEmergencyQuery(queryText)) {
+      setIsActive(false);
+      window.dispatchEvent(new CustomEvent('blueguard:trigger_emergency', { detail: { message: queryText } }));
+    } else if (onQuerySubmitted) {
+      onQuerySubmitted(queryText);
+    }
   };
 
   const handleStartVoice = () => {
@@ -50,29 +74,14 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
     setIsListening(true);
     setTranscript('');
 
-    voiceRecognitionService.startListening(
-      (text, isFinal) => {
+    voiceRecognitionService.startListening((text, isFinal) => {
+      if (text && text.trim().length > 0) {
         setTranscript(text);
-        if (isFinal && text.trim().length > 3) {
-          if (isEmergencyQuery(text)) {
-            setIsActive(false);
-            window.dispatchEvent(new CustomEvent('blueguard:trigger_emergency', { detail: { message: text } }));
-          } else if (onQuerySubmitted) {
-            onQuerySubmitted(text);
-          }
+        if (isFinal && text.trim().length > 2) {
+          handleFinalVoiceQuery(text.trim());
         }
-      },
-      () => {
-        // Wake word triggered! Expand modal
-        setIsActive(true);
-        audioService.speak(language === 'hi' ? 'हाँ, मैं सुन रहा हूँ।' : "BlueGuard active. How can I assist your voyage?", language);
-      },
-      () => {
-        // Emergency voice command callback
-        setIsActive(false);
-        window.dispatchEvent(new CustomEvent('blueguard:trigger_emergency', { detail: { message: 'Emergency distress activated via voice phrase.' } }));
       }
-    );
+    });
   };
 
   const handleSendTyped = (e: React.FormEvent) => {
@@ -81,20 +90,14 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
       const query = typedQuery.trim();
       setTranscript(query);
       setTypedQuery('');
-
-      if (isEmergencyQuery(query)) {
-        setIsActive(false);
-        window.dispatchEvent(new CustomEvent('blueguard:trigger_emergency', { detail: { message: query } }));
-      } else if (onQuerySubmitted) {
-        onQuerySubmitted(query);
-      }
+      handleFinalVoiceQuery(query);
     }
   };
 
   const handleClose = () => {
     setIsActive(false);
     setIsListening(false);
-    voiceRecognitionService.stopListening();
+    voiceRecognitionService.resetWakeWordState();
   };
 
   return (
@@ -103,7 +106,7 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
       {!isActive && (
         <button
           onClick={handleStartVoice}
-          title="Activate BlueGuard Voice Assistant ('BlueGuard')"
+          title="Activate BlueGuard Voice Assistant ('Hey BlueGuard')"
           className="fixed bottom-6 right-6 z-[9999] w-14 h-14 rounded-full bg-gradient-to-tr from-emerald-600 via-teal-500 to-cyan-400 p-0.5 shadow-2xl shadow-emerald-500/40 hover:scale-110 active:scale-95 transition-all group"
         >
           <div className="w-full h-full bg-slate-950 rounded-full flex items-center justify-center relative">
@@ -146,7 +149,7 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
             BLUEGUARD ASSISTANT
           </h2>
           <p className="text-xs text-slate-400 mb-4 font-mono">
-            {language === 'hi' ? "बोलिए या टाइप कीजिए: 'blueguard emergency alert'" : "Speak or type your command (Say/type 'blueguard emergency alert' for SOS):"}
+            {language === 'hi' ? "बोलिए या टाइप कीजिए: 'blueguard emergency alert'" : language === 'ta' ? "பேசுங்கள் அல்லது தட்டச்சு செய்யுங்கள்:" : "Speak into microphone or type your command:"}
           </p>
 
           {/* Equalizer Waveform Animation */}
@@ -163,7 +166,7 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
           {/* Transcript Display Box */}
           <div className="w-full max-w-lg glass-panel-emerald p-4 rounded-2xl text-center border border-emerald-500/40 mb-4">
             <p className="text-emerald-100 text-sm font-medium min-h-[40px] flex items-center justify-center italic">
-              {transcript ? `"${transcript}"` : language === 'hi' ? 'आपकी आवाज या पाठ कमांड का इंतजार...' : 'Awaiting voice command or typed input...'}
+              {transcript ? `"${transcript}"` : language === 'hi' ? 'आपकी आवाज या पाठ कमांड का इंतजार...' : language === 'ta' ? 'உங்கள் குரல் கட்டளைக்காக காத்திருக்கிறது...' : 'Listening... Speak your question now.'}
             </p>
           </div>
 
@@ -173,7 +176,7 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
               type="text"
               value={typedQuery}
               onChange={(e) => setTypedQuery(e.target.value)}
-              placeholder={language === 'hi' ? "कमांड टाइप करें ('blueguard emergency alert')..." : "Type command (e.g. 'blueguard emergency alert')..."}
+              placeholder={language === 'hi' ? "कमांड टाइप करें..." : language === 'ta' ? "கட்டளையை தட்டச்சு செய்க..." : "Type command (e.g. 'Is route to Colombo safe?')..."}
               className="flex-1 px-4 py-3 bg-slate-950/90 border border-emerald-500/50 rounded-xl text-xs font-semibold text-emerald-100 placeholder:text-slate-500 focus:outline-none focus:border-emerald-400 focus:ring-2 focus:ring-emerald-500/30"
             />
             <button
@@ -196,12 +199,7 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
                 key={idx}
                 onClick={() => {
                   setTranscript(prompt);
-                  if (isEmergencyQuery(prompt)) {
-                    setIsActive(false);
-                    window.dispatchEvent(new CustomEvent('blueguard:trigger_emergency', { detail: { message: prompt } }));
-                  } else if (onQuerySubmitted) {
-                    onQuerySubmitted(prompt);
-                  }
+                  handleFinalVoiceQuery(prompt);
                 }}
                 className={`glass-button text-xs px-3 py-1.5 rounded-full border ${
                   idx === 0 ? 'text-red-300 border-red-500/60 bg-red-950/40 hover:bg-red-900/60' : 'text-emerald-200 border-emerald-500/30 hover:border-emerald-400'

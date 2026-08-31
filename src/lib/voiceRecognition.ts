@@ -1,4 +1,4 @@
-// Voice Recognition & Trigger Word ("BlueGuard") Detection Service
+// Single Master Voice Recognition & Wake Word ("Hey BlueGuard") Service
 
 export interface SpeechRecognitionResultEvent {
   resultIndex: number;
@@ -63,7 +63,8 @@ class VoiceRecognitionService {
             }
           }
 
-          const combined = (finalTranscript || interimTranscript).toLowerCase().trim();
+          const rawText = finalTranscript || interimTranscript;
+          const combined = rawText.toLowerCase().trim();
 
           // Check for wake phrase "BlueGuard" / "Hey BlueGuard" in various regional transliterations
           const isWake =
@@ -71,14 +72,13 @@ class VoiceRecognitionService {
             combined.includes('blue guard') ||
             combined.includes('hey blueguard') ||
             combined.includes('hey blue guard') ||
-            combined.includes('블ूगार्ड') ||
             combined.includes('புளூகார்ட்') ||
             combined.includes('ப்ளூ கார்ட்') ||
             combined.includes('ब्लूगार्ड');
 
-          if (isWake) {
-            if (!this.isWakeWordActive && this.onWakeWordTriggered) {
-              this.isWakeWordActive = true;
+          if (isWake && !this.isWakeWordActive) {
+            this.isWakeWordActive = true;
+            if (this.onWakeWordTriggered) {
               this.onWakeWordTriggered();
             }
 
@@ -95,12 +95,25 @@ class VoiceRecognitionService {
             }
           }
 
-          if (this.onTranscriptCallback) {
-            this.onTranscriptCallback(finalTranscript || interimTranscript, Boolean(finalTranscript));
+          // Strip wake word phrase from query text if present
+          let cleanTranscript = rawText
+            .replace(/hey blueguard/gi, '')
+            .replace(/blueguard/gi, '')
+            .replace(/blue guard/gi, '')
+            .replace(/புளூகார்ட்/gi, '')
+            .replace(/ब्लूगार्ड/gi, '')
+            .trim();
+
+          if (this.onTranscriptCallback && (cleanTranscript || rawText)) {
+            this.onTranscriptCallback(cleanTranscript || rawText, Boolean(finalTranscript));
           }
         };
 
         this.recognition.onerror = (event: any) => {
+          // Gracefully ignore no-speech or network errors so mic stays active silently
+          if (event.error === 'no-speech' || event.error === 'network' || event.error === 'aborted') {
+            return;
+          }
           console.warn('[VOICE RECOGNITION ERROR]', event.error);
         };
 
@@ -115,7 +128,7 @@ class VoiceRecognitionService {
     }
   }
 
-  private updateLangCode() {
+  public updateLangCode() {
     if (!this.recognition) return;
     const langCodeMap: Record<string, string> = {
       en: 'en-US',
@@ -128,19 +141,29 @@ class VoiceRecognitionService {
       mr: 'mr-IN',
       gu: 'gu-IN'
     };
-    this.recognition.lang = langCodeMap[this.currentLanguage] || 'en-US';
+    const targetCode = langCodeMap[this.currentLanguage] || 'en-US';
+    this.recognition.lang = targetCode;
   }
 
   public setLanguage(lang: string) {
     this.currentLanguage = lang;
     this.updateLangCode();
+    // Restart recognition with new language if active
+    if (this.isListening && this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch {}
+    }
   }
 
   /**
-   * Request microphone permissions on site open & start background wake-word listening
+   * Request mic permission on startup & begin continuous background wake word listening
    */
-  public requestMicPermissionAndListen(onWakeWord: TriggerCallback) {
+  public requestMicPermissionAndListen(onWakeWord: TriggerCallback, onTranscript?: VoiceCallback) {
     this.onWakeWordTriggered = onWakeWord;
+    if (onTranscript) {
+      this.onTranscriptCallback = onTranscript;
+    }
     this.isListening = true;
 
     if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
@@ -159,14 +182,18 @@ class VoiceRecognitionService {
     }
   }
 
+  public setTranscriptCallback(cb: VoiceCallback | null) {
+    this.onTranscriptCallback = cb;
+  }
+
   public startListening(
     onTranscript: VoiceCallback,
-    onWakeWord: TriggerCallback,
+    onWakeWord?: TriggerCallback,
     onEmergency?: EmergencyVoiceCallback
   ) {
     this.onTranscriptCallback = onTranscript;
-    this.onWakeWordTriggered = onWakeWord;
-    this.onEmergencyTriggered = onEmergency || null;
+    if (onWakeWord) this.onWakeWordTriggered = onWakeWord;
+    if (onEmergency) this.onEmergencyTriggered = onEmergency;
     this.isListening = true;
 
     if (this.recognition) {
@@ -179,6 +206,7 @@ class VoiceRecognitionService {
   public stopListening() {
     this.isListening = false;
     this.isWakeWordActive = false;
+    this.onTranscriptCallback = null;
     if (this.recognition) {
       try {
         this.recognition.stop();
@@ -188,6 +216,10 @@ class VoiceRecognitionService {
 
   public resetWakeWordState() {
     this.isWakeWordActive = false;
+  }
+
+  public isSupported(): boolean {
+    return typeof window !== 'undefined' && (Boolean((window as any).SpeechRecognition) || Boolean((window as any).webkitSpeechRecognition));
   }
 }
 

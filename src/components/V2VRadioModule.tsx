@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { ShipProfile, V2VVoiceMessage, NearbyVessel } from '@/lib/types';
 import { audioService } from '@/lib/audioService';
+import { voiceRecognitionService } from '@/lib/voiceRecognition';
 import { emergencyRealtimeNetwork } from '@/lib/emergencyRealtime';
 import { communicationAgent, multilingualVoiceAgent } from '@/lib/agenticOrchestrator';
 
@@ -94,77 +95,28 @@ export default function V2VRadioModule({
     setLiveTranscript('');
     setAiResponseText('');
 
-    if (typeof window === 'undefined') return;
-
-    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-
-    if (!SpeechRecognition) {
+    if (!voiceRecognitionService.isSupported()) {
       setVoiceState('Mic Off');
       setVoiceErrorMessage('Microphone access is required for Voice AI. You can continue using text chat.');
       return;
     }
 
-    try {
-      const recognition = new SpeechRecognition();
-      recognitionRef.current = recognition;
-      recognition.continuous = false;
-      recognition.interimResults = true;
+    setVoiceState('Listening');
+    voiceRecognitionService.setLanguage(selectedLanguage);
+    setDetectedLangLabel(multilingualVoiceAgent.getLanguageLabel(selectedLanguage));
 
-      // Set language code
-      const langCodeMap: Record<string, string> = {
-        en: 'en-US',
-        ta: 'ta-IN',
-        hi: 'hi-IN',
-        te: 'te-IN',
-        ml: 'ml-IN',
-        kn: 'kn-IN',
-        bn: 'bn-IN',
-        mr: 'mr-IN',
-        gu: 'gu-IN'
-      };
-
-      recognition.lang = langCodeMap[selectedLanguage] || 'en-US';
-      setVoiceState('Listening');
-
-      recognition.onresult = (event: any) => {
-        let transcript = '';
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          transcript += event.results[i][0].transcript;
+    voiceRecognitionService.startListening((transcriptText: string, isFinal: boolean) => {
+      if (transcriptText) {
+        setLiveTranscript(transcriptText);
+        if (isFinal && transcriptText.trim().length > 2) {
+          processVoiceQuery(transcriptText.trim());
         }
-        setLiveTranscript(transcript);
-        setDetectedLangLabel(multilingualVoiceAgent.getLanguageLabel(selectedLanguage));
-      };
-
-      recognition.onerror = (event: any) => {
-        console.warn('Speech error:', event.error);
-        if (event.error === 'not-allowed') {
-          setVoiceState('Mic Off');
-          setVoiceErrorMessage('Microphone access is required for Voice AI. You can continue using text chat.');
-        } else {
-          setVoiceState('Voice Ready');
-          setVoiceErrorMessage("Couldn't understand the audio. Please try again.");
-        }
-      };
-
-      recognition.onend = () => {
-        if (liveTranscript.trim()) {
-          processVoiceQuery(liveTranscript);
-        } else {
-          setVoiceState('Voice Ready');
-        }
-      };
-
-      recognition.start();
-    } catch (err) {
-      setVoiceState('Mic Off');
-      setVoiceErrorMessage('Microphone access is required for Voice AI. You can continue using text chat.');
-    }
+      }
+    });
   };
 
   const stopVoiceCapture = () => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop();
-    }
+    voiceRecognitionService.stopListening();
     setVoiceState('Voice Ready');
   };
 
