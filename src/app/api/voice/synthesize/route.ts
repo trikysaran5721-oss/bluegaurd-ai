@@ -1,45 +1,50 @@
 import { NextResponse } from 'next/server';
-
-const SARVAM_LANG_MAP: Record<string, string> = {
-  en: 'en-IN',
-  ta: 'ta-IN',
-  hi: 'hi-IN',
-  te: 'te-IN',
-  ml: 'ml-IN',
-  kn: 'kn-IN',
-  bn: 'bn-IN',
-  mr: 'mr-IN',
-  gu: 'gu-IN',
-  'en-IN': 'en-IN',
-  'ta-IN': 'ta-IN',
-  'hi-IN': 'hi-IN',
-  'te-IN': 'te-IN',
-  'ml-IN': 'ml-IN',
-  'kn-IN': 'kn-IN',
-  'bn-IN': 'bn-IN',
-  'mr-IN': 'mr-IN',
-  'gu-IN': 'gu-IN'
-};
+import { execSync } from 'child_process';
+import path from 'path';
 
 export async function POST(request: Request) {
   try {
-    const sarvamApiKey = process.env.SARVAM_API_KEY;
+    const sarvamApiKey = process.env.SARVAM_API_KEY || "sk_txs4qqro_FPF9Hxl7iXvMSE8yhkr5O8vG";
     const body = await request.json();
     const text = body.text || '';
-    const rawLang = body.target_language_code || body.language || 'en-IN';
-    const targetLangCode = SARVAM_LANG_MAP[rawLang] || 'en-IN';
-    const speaker = body.speaker || 'meera';
+    const rawLang = body.target_language_code || body.language || 'ta-IN';
+    const targetLangCode = rawLang.includes('-') ? rawLang : `${rawLang}-IN`;
 
     if (!text.trim()) {
       return NextResponse.json({ error: 'Text input is required' }, { status: 400 });
     }
 
+    // 1. Try python sarvamai SDK first
+    try {
+      const scriptPath = path.join(process.cwd(), 'scripts', 'sarvam_bridge.py');
+      const inputJson = JSON.stringify({ text, target_language_code: targetLangCode });
+      const command = `python "${scriptPath}" synthesize`;
+      const output = execSync(command, {
+        input: inputJson,
+        env: { ...process.env, SARVAM_API_KEY: sarvamApiKey },
+        encoding: 'utf-8',
+        timeout: 8000
+      });
+      const parsed = JSON.parse(output.trim());
+      if (parsed.audio_base64) {
+        return NextResponse.json({
+          audio_base64: parsed.audio_base64,
+          target_language_code: targetLangCode,
+          is_demo_mode: false,
+          provider: parsed.provider || 'SarvamAI Python SDK 0.1.31a4 (bulbul)'
+        });
+      }
+    } catch (sdkErr) {
+      console.warn('Sarvam Python SDK fallback to REST:', sdkErr);
+    }
+
+    // 2. HTTP REST Fallback
     if (sarvamApiKey) {
       try {
         const payload = {
           inputs: [text.slice(0, 500)],
           target_language_code: targetLangCode,
-          speaker: speaker,
+          speaker: 'kavitha',
           pitch: 0,
           pace: 1.05,
           loudness: 1.5,
@@ -65,28 +70,24 @@ export async function POST(request: Request) {
               audio_base64: base64Audio,
               target_language_code: targetLangCode,
               is_demo_mode: false,
-              provider: 'Sarvam TTS (bulbul:v1)'
+              provider: 'Sarvam REST API (bulbul:v1)'
             });
           }
-        } else {
-          const errText = await sarvamRes.text();
-          console.warn('[Sarvam TTS API Error]:', errText);
         }
-      } catch (sarvamErr) {
-        console.error('[Sarvam TTS Exception]:', sarvamErr);
+      } catch (err) {
+        console.warn('Sarvam REST API call failed:', err);
       }
     }
 
-    // Demo Mode / Fallback Response
     return NextResponse.json({
       audio_base64: null,
       target_language_code: targetLangCode,
       is_demo_mode: true,
-      provider: 'Sarvam Demo TTS Engine'
+      provider: 'Sarvam Demo Voice Engine'
     });
   } catch (err) {
     return NextResponse.json(
-      { error: 'Voice response unavailable. Showing text response instead.' },
+      { error: 'Voice response unavailable.' },
       { status: 500 }
     );
   }
