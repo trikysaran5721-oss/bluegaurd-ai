@@ -120,9 +120,8 @@ export default function DashboardPage() {
   };
 
   const handleVoiceQuery = async (queryText: string) => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     try {
-      const res = await fetch(`${apiUrl}/api/agent`, {
+      const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

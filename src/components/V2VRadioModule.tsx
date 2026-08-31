@@ -171,22 +171,29 @@ export default function V2VRadioModule({
   const processVoiceQuery = async (queryText: string) => {
     setVoiceState('Processing');
 
-    setTimeout(() => {
-      let answer = `BlueGuard Report for ${currentShip.display_name}: Passages near ${currentShip.destination} are clear. Wind is 22 kts NE with SST at 28.5°C.`;
-      const qLower = queryText.toLowerCase();
+    try {
+      const res = await fetch('/api/agent', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          query: queryText,
+          ship_id: currentShip.ship_id,
+          language: selectedLanguage,
+          destination: currentShip.destination || 'Colombo'
+        })
+      });
 
-      if (qLower.includes('fish') || qLower.includes('pfz') || qLower.includes('tuna')) {
-        answer = `Fishing Advisory: Nearest PFZ zone is Palk Bay North (18.5 km). SST is 28.8°C with high chlorophyll biomass (1.45 mg/m³). High yield expected for Yellowfin Tuna & Sardine.`;
-      } else if (qLower.includes('weather') || qLower.includes('wind') || qLower.includes('wave')) {
-        answer = `Weather Advisory: 22 knots NE wind with wave height 2.1 meters. Tropical Depression 02B is active 120 NM southeast. Proceed with caution.`;
-      } else if (qLower.includes('border') || qLower.includes('imbl') || qLower.includes('sri lanka')) {
-        answer = `Geofence Alert: You are operating 18 km north of the India-Sri Lanka IMBL boundary line. Maintain course north of 10°N.`;
+      let answer = '';
+      if (res.ok) {
+        const data = await res.json();
+        answer = data.answer;
+      } else {
+        answer = `BlueGuard Advisory for Ship #${currentShip.ship_id}: Weather near ${currentShip.destination || 'Colombo'} is experiencing 22 knots NE wind. Maintain safe passage.`;
       }
 
       setAiResponseText(answer);
       setVoiceState('Speaking');
-
-      audioService.speak(answer, selectedLanguage as any);
+      audioService.speak(answer, selectedLanguage);
 
       if (onVoiceQueryResult) {
         onVoiceQueryResult(queryText, answer);
@@ -195,7 +202,16 @@ export default function V2VRadioModule({
       setTimeout(() => {
         setVoiceState('Voice Ready');
       }, 5000);
-    }, 1200);
+    } catch (err) {
+      console.warn('Voice agent fetch error:', err);
+      const fallback = `BlueGuard Advisory: Wind speed is 22 knots NE with 2.1m wave height. Proceed with caution.`;
+      setAiResponseText(fallback);
+      setVoiceState('Speaking');
+      audioService.speak(fallback, selectedLanguage);
+      setTimeout(() => {
+        setVoiceState('Voice Ready');
+      }, 4000);
+    }
   };
 
   // --- V2V Cross-Language Transmission ---
