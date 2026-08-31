@@ -6,7 +6,7 @@ import { voiceRecognitionService } from '@/lib/voiceRecognition';
 import { audioService } from '@/lib/audioService';
 
 interface BlueGuardMicProps {
-  language?: 'en' | 'hi';
+  language?: string;
   onQuerySubmitted?: (query: string) => void;
 }
 
@@ -18,6 +18,26 @@ export default function BlueGuardMic({ language = 'en', onQuerySubmitted }: Blue
 
   useEffect(() => {
     voiceRecognitionService.setLanguage(language);
+
+    // Auto-request microphone permission on website open for wake word ("Hey BlueGuard")
+    voiceRecognitionService.requestMicPermissionAndListen(() => {
+      setIsActive(true);
+      setIsListening(true);
+      const greetings: Record<string, string> = {
+        en: 'BlueGuard active. How can I assist your voyage?',
+        ta: 'புளூகார்ட் தயார். உங்களுக்கு எவ்வாறு உதவ வேண்டும்?',
+        hi: 'ब्लूगार्ड सक्रिय है। मैं आपकी सहायता कैसे कर सकता हूँ?',
+        te: 'బ్లూగార్డ్ యాక్టివ్‌గా ఉంది. నేను మీకు ఎలా సహాయపడగలను?',
+        ml: 'ബ്ലൂഗാർഡ് സജീവമാണ്. എങ്ങനെ സഹായിക്കണം?',
+        kn: 'ಬ್ಲೂಗಾರ್ಡ್ ಸಕ್ರಿಯವಾಗಿದೆ. ನಾನು ಹೇಗೆ ಸಹಾಯ ಮಾಡಲಿ?',
+        bn: 'ব্লুগার্ড সক্রিয়। কীভাবে আপনাকে সাহায্য করতে পারি?',
+        mr: 'ब्लूगार्ड सक्रिय आहे. मी तुम्हाला कशी मदत करू शकतो?',
+        gu: 'બ્લૂગાર્ડ સક્રિય છે. હું તમને કેવી રીતે મદદ કરી શકું?'
+      };
+
+      const greetingText = greetings[language] || greetings.en;
+      audioService.speak(greetingText, language);
+    });
   }, [language]);
 
   const isEmergencyQuery = (text: string) => {

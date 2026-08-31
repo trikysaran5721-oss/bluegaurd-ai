@@ -123,26 +123,36 @@ class AudioService {
     this.activeOscillators = [];
   }
 
-  public speak(text: string, language: 'en' | 'hi' = 'en') {
+  public speak(text: string, language: string = 'en') {
     if (!this.speechSynth || typeof window === 'undefined') return;
 
     try {
       this.speechSynth.cancel();
 
       const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
+      utterance.rate = 0.95;
       utterance.pitch = 1.0;
       utterance.volume = 1.0;
 
-      if (language === 'hi') {
-        utterance.lang = 'hi-IN';
-      } else {
-        utterance.lang = 'en-US';
-      }
+      const langMap: Record<string, string> = {
+        en: 'en-US',
+        ta: 'ta-IN',
+        hi: 'hi-IN',
+        te: 'te-IN',
+        ml: 'ml-IN',
+        kn: 'kn-IN',
+        bn: 'bn-IN',
+        mr: 'mr-IN',
+        gu: 'gu-IN'
+      };
+
+      const targetLangCode = langMap[language] || 'en-US';
+      utterance.lang = targetLangCode;
 
       const voices = this.speechSynth.getVoices();
       const matchedVoice = voices.find((v) =>
-        language === 'hi' ? v.lang.includes('hi') || v.name.includes('Hindi') : v.lang.includes('en')
+        v.lang.toLowerCase().includes(language) ||
+        v.lang.toLowerCase().includes(targetLangCode.toLowerCase())
       );
       if (matchedVoice) {
         utterance.voice = matchedVoice;

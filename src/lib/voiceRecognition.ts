@@ -34,7 +34,7 @@ class VoiceRecognitionService {
   private onTranscriptCallback: VoiceCallback | null = null;
   private onWakeWordTriggered: TriggerCallback | null = null;
   private onEmergencyTriggered: EmergencyVoiceCallback | null = null;
-  private currentLanguage: 'en' | 'hi' = 'en';
+  private currentLanguage: string = 'en';
 
   constructor() {
     this.initRecognition();
@@ -48,7 +48,7 @@ class VoiceRecognitionService {
         this.recognition = new SpeechRecognition();
         this.recognition.continuous = true;
         this.recognition.interimResults = true;
-        this.recognition.lang = this.currentLanguage === 'hi' ? 'hi-IN' : 'en-US';
+        this.updateLangCode();
 
         this.recognition.onresult = (event: SpeechRecognitionResultEvent) => {
           let interimTranscript = '';
@@ -65,18 +65,28 @@ class VoiceRecognitionService {
 
           const combined = (finalTranscript || interimTranscript).toLowerCase().trim();
 
-          // Check for wake phrase "BlueGuard"
-          if (combined.includes('blueguard') || combined.includes('blue guard') || combined.includes('ब्लूगार्ड')) {
+          // Check for wake phrase "BlueGuard" / "Hey BlueGuard" in various regional transliterations
+          const isWake =
+            combined.includes('blueguard') ||
+            combined.includes('blue guard') ||
+            combined.includes('hey blueguard') ||
+            combined.includes('hey blue guard') ||
+            combined.includes('블ूगार्ड') ||
+            combined.includes('புளூகார்ட்') ||
+            combined.includes('ப்ளூ கார்ட்') ||
+            combined.includes('ब्लूगार्ड');
+
+          if (isWake) {
             if (!this.isWakeWordActive && this.onWakeWordTriggered) {
               this.isWakeWordActive = true;
               this.onWakeWordTriggered();
             }
 
-            // Check for emergency voice command: "BlueGuard, send the emergency alert"
+            // Check for emergency voice command
             if (
               combined.includes('send emergency') ||
-              combined.includes('send the emergency') ||
               combined.includes('emergency alert') ||
+              combined.includes('ஆபத்து') ||
               combined.includes('आपत्कालीन')
             ) {
               if (this.onEmergencyTriggered) {
@@ -105,10 +115,47 @@ class VoiceRecognitionService {
     }
   }
 
-  public setLanguage(lang: 'en' | 'hi') {
+  private updateLangCode() {
+    if (!this.recognition) return;
+    const langCodeMap: Record<string, string> = {
+      en: 'en-US',
+      ta: 'ta-IN',
+      hi: 'hi-IN',
+      te: 'te-IN',
+      ml: 'ml-IN',
+      kn: 'kn-IN',
+      bn: 'bn-IN',
+      mr: 'mr-IN',
+      gu: 'gu-IN'
+    };
+    this.recognition.lang = langCodeMap[this.currentLanguage] || 'en-US';
+  }
+
+  public setLanguage(lang: string) {
     this.currentLanguage = lang;
-    if (this.recognition) {
-      this.recognition.lang = lang === 'hi' ? 'hi-IN' : 'en-US';
+    this.updateLangCode();
+  }
+
+  /**
+   * Request microphone permissions on site open & start background wake-word listening
+   */
+  public requestMicPermissionAndListen(onWakeWord: TriggerCallback) {
+    this.onWakeWordTriggered = onWakeWord;
+    this.isListening = true;
+
+    if (typeof window !== 'undefined' && navigator.mediaDevices?.getUserMedia) {
+      navigator.mediaDevices
+        .getUserMedia({ audio: true })
+        .then(() => {
+          if (this.recognition) {
+            try {
+              this.recognition.start();
+            } catch {}
+          }
+        })
+        .catch((err) => {
+          console.warn('Microphone permission request failed:', err);
+        });
     }
   }
 

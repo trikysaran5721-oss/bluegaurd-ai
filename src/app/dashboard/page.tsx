@@ -114,7 +114,7 @@ export default function DashboardPage() {
     setNearestPFZ(pfzResult);
 
     audioService.speak(
-      `Nearest Potential Fishing Zone is ${pfzResult.name}, located ${pfzResult.distance_km} kilometers ${pfzResult.bearing}. Recommended species include ${pfzResult.fish_species.slice(0, 2).join(' and ')}.`,
+      `Nearest Potential Fishing Zone is ${pfzResult.name}, located ${pfzResult.distance_km} kilometers ${pfzResult.bearing}.`,
       userProfile.preferred_language || 'en'
     );
   };
@@ -135,18 +135,17 @@ export default function DashboardPage() {
 
       if (res.ok) {
         const data = await res.json();
-        audioService.speak(data.answer, data.language);
+        setMarineInsightText(data.answer);
+        audioService.speak(data.answer, data.language || userProfile?.preferred_language || 'en');
       } else {
-        audioService.speak(
-          `BlueGuard Report: Passage to ${destinationInput} is classified as CAUTION due to 22 knot NE winds and SST thermal front.`,
-          userProfile?.preferred_language || 'en'
-        );
+        const fallback = `BlueGuard Report: Passage to ${destinationInput} is classified as CAUTION due to 22 knot NE winds and SST thermal front.`;
+        setMarineInsightText(fallback);
+        audioService.speak(fallback, userProfile?.preferred_language || 'en');
       }
     } catch {
-      audioService.speak(
-        `BlueGuard Report: Passage to ${destinationInput} is classified as CAUTION due to 22 knot NE winds and SST thermal front.`,
-        userProfile?.preferred_language || 'en'
-      );
+      const fallback = `BlueGuard Report: Passage to ${destinationInput} is classified as CAUTION due to 22 knot NE winds and SST thermal front.`;
+      setMarineInsightText(fallback);
+      audioService.speak(fallback, userProfile?.preferred_language || 'en');
     }
   };
 
@@ -206,7 +205,30 @@ export default function DashboardPage() {
           </div>
         )}
 
-        {/* 2. AI / MARINE SUMMARY & EXPLAINABILITY */}
+        {/* 2. 🎙️ V2V RADIO & VOICE AI COMMAND HUB (FIRST COMPONENT BELOW HEADER) */}
+        <V2VRadioModule
+          currentShip={userProfile}
+          nearbyVessels={nearbyVessels}
+          onVoiceQueryResult={(q, a) => setMarineInsightText(a)}
+        />
+
+        {/* 3. 🗺️ SATELLITE MARINE INTELLIGENCE MAP (DIRECTLY BELOW VOICE COMMAND HUB) */}
+        <div className="h-[520px] w-full rounded-3xl overflow-hidden shadow-2xl relative border border-cyan-500/40">
+          <MarineMap
+            currentShip={currentShipVessel}
+            destinationName={destinationInput}
+            routeWaypoints={activeRoute?.waypoints}
+            nearbyVessels={nearbyVessels}
+            windData={wind || undefined}
+            tideData={tide || undefined}
+            cycloneData={cyclone || undefined}
+            onAskBlueGuardArea={(lat, lon, summary) => {
+              handleVoiceQuery(summary);
+            }}
+          />
+        </div>
+
+        {/* 4. AI / MARINE SUMMARY & EXPLAINABILITY CARDS */}
         <div className="space-y-4">
           
           {/* Destination Search + Passage Risk Status */}
@@ -351,29 +373,6 @@ export default function DashboardPage() {
 
         </div>
 
-        {/* 3. 🎙️ V2V RADIO & VOICE AI COMMAND HUB (PLACED DIRECTLY ABOVE MAP) */}
-        <V2VRadioModule
-          currentShip={userProfile}
-          nearbyVessels={nearbyVessels}
-          onVoiceQueryResult={(q, a) => setMarineInsightText(a)}
-        />
-
-        {/* 4. 🗺️ DOMINANT SATELLITE MARINE INTELLIGENCE MAP */}
-        <div className="h-[520px] w-full rounded-3xl overflow-hidden shadow-2xl relative border border-cyan-500/40">
-          <MarineMap
-            currentShip={currentShipVessel}
-            destinationName={destinationInput}
-            routeWaypoints={activeRoute?.waypoints}
-            nearbyVessels={nearbyVessels}
-            windData={wind || undefined}
-            tideData={tide || undefined}
-            cycloneData={cyclone || undefined}
-            onAskBlueGuardArea={(lat, lon, summary) => {
-              handleVoiceQuery(summary);
-            }}
-          />
-        </div>
-
         {/* 5. CONDITIONS & ALERTS (BOTTOM FLOATING GLASS WIDGETS GRID) */}
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
           {/* Weather Widget */}
@@ -472,9 +471,9 @@ export default function DashboardPage() {
       {/* Floating Seawater Parallax Footer */}
       <SeawaterFooter />
 
-      {/* Signature BlueGuard Floating Mic */}
+      {/* Signature BlueGuard Floating Mic with Auto Wake Word Listener */}
       <BlueGuardMic
-        language={userProfile.preferred_language}
+        language={userProfile.preferred_language || 'en'}
         onQuerySubmitted={handleVoiceQuery}
       />
 
