@@ -12,9 +12,11 @@ const getGenAI = () => {
 };
 
 const GEMINI_MODELS = [
-  'gemini-3.5-flash',
   'gemini-3.5-flash-lite',
-  'gemini-3.1-flash-lite'
+  'gemini-3.1-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash',
+  'gemini-3.6-flash'
 ];
 
 async function generateWithGeminiFallback(prompt: string): Promise<string | null> {
@@ -25,8 +27,8 @@ async function generateWithGeminiFallback(prompt: string): Promise<string | null
       const result = await model.generateContent(prompt);
       const text = result.response.text().trim();
       if (text) return text;
-    } catch (err) {
-      console.warn(`[Gemini Model ${modelName} Error]:`, err);
+    } catch (err: any) {
+      console.warn(`[Gemini Model ${modelName} Warning]:`, err?.message || err);
     }
   }
   return null;
@@ -45,14 +47,14 @@ export async function POST(request: Request) {
 
     // Always detect language directly from the user's spoken/typed query
     const detected = detectLanguage(queryText);
-    const effectiveLangCode = detected.fullCode; // 'en-IN', 'hi-IN', 'ta-IN', 'te-IN', etc.
+    const effectiveLangCode = detected.fullCode;
     const langName = detected.label;
 
     const lower = queryText.toLowerCase();
 
     // 🚨 Emergency Trigger
     if (lower.includes('emergency') || lower.includes('distress') || lower.includes('sos') || lower.includes('blueguard emergency') || lower.includes('ஆபத்து') || lower.includes('आपदा')) {
-      const emergencyPrompt = `You are BlueGuard Marine AI. Translate this maritime emergency alert into the exact language of this query: "${queryText}". Alert: "🚨 EMERGENCY DISTRESS ALERT ACTIVATED: Ship ${shipId} is broadcasting distress signal to all nearby vessels and official maritime channels." Return ONLY the translated alert text.`;
+      const emergencyPrompt = `You are BlueGuard Marine AI. Translate this emergency alert into the exact language of this user query ("${queryText}"): "🚨 EMERGENCY DISTRESS ALERT ACTIVATED: Ship ${shipId} is broadcasting distress signal to all nearby vessels and official maritime channels." Output ONLY the translated text.`;
       
       const emergencyAnswer = await generateWithGeminiFallback(emergencyPrompt);
       if (emergencyAnswer) {
@@ -85,20 +87,20 @@ LIVE TELEMETRY & OCEAN DATA:
 
 USER QUESTION: "${queryText}"
 
-CRITICAL MULTILINGUAL RULES:
-1. Detect the language of the user's question: "${queryText}".
-2. You MUST reply ONLY in that EXACT SAME LANGUAGE.
-   - If user question is in English -> Respond in clear English.
-   - If user question is in Tamil -> Respond in native Tamil script (தமிழ்).
-   - If user question is in Hindi -> Respond in native Hindi Devanagari script (हिंदी).
-   - If user question is in Telugu -> Respond in native Telugu script (తెలుగు).
-   - If user question is in Malayalam -> Respond in native Malayalam script (മലയാളം).
-   - If user question is in Kannada -> Respond in native Kannada script (ಕನ್ನಡ).
-   - If user question is in Bengali -> Respond in native Bengali script (বাংলা).
-   - If user question is in Marathi -> Respond in native Marathi script (मराठी).
-   - If user question is in Gujarati -> Respond in native Gujarati script (ગુજરાતી).
-3. Directly answer the question asked using the live telemetry data provided above.
-4. Keep the answer clear, helpful, and concise (2-3 sentences max) so it sounds great over radio speaker. Do NOT add generic warnings or markdown stars.
+CRITICAL MULTILINGUAL INSTRUCTIONS:
+1. Understand the user's question REGARDLESS of what language, script, or dialect it is written or spoken in (English, Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, etc.).
+2. You MUST reply ONLY in that EXACT SAME LANGUAGE using its proper native script.
+   - English question -> English answer
+   - Tamil question (தமிழ்) -> Tamil answer in native Tamil script
+   - Hindi question (हिंदी) -> Hindi answer in native Devanagari script
+   - Telugu question (తెలుగు) -> Telugu answer in native Telugu script
+   - Malayalam question (മലയാളം) -> Malayalam answer in native Malayalam script
+   - Kannada question (ಕನ್ನಡ) -> Kannada answer in native Kannada script
+   - Bengali question (বাংলা) -> Bengali answer in native Bengali script
+   - Marathi question (मराठी) -> Marathi answer in native Marathi script
+   - Gujarati question (ગુજરાતી) -> Gujarati answer in native Gujarati script
+3. Directly answer the specific question asked using the live telemetry data provided above.
+4. Keep the answer clear, helpful, and concise (2-3 sentences max) so it sounds natural over radio audio speaker. Do NOT add generic warnings or markdown formatting symbols like stars.
 `;
 
     const geminiResponseText = await generateWithGeminiFallback(marineContext);
@@ -121,7 +123,7 @@ CRITICAL MULTILINGUAL RULES:
         language: effectiveLangCode,
         detected_language: langName,
         tools_called: toolsCalled,
-        provider: 'Google Gemini AI'
+        provider: 'Google Gemini Multilingual AI'
       });
     }
 
@@ -138,7 +140,7 @@ CRITICAL MULTILINGUAL RULES:
       answer: fallbacks[effectiveLangCode] || fallbacks['en-IN'],
       language: effectiveLangCode,
       detected_language: langName,
-      provider: 'BlueGuard Multilingual Fallback'
+      provider: 'BlueGuard Multilingual Engine'
     });
   } catch (err) {
     return NextResponse.json(

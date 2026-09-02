@@ -238,7 +238,7 @@ export default function V2VRadioModule({
     const srcLang = selectedLanguage;
     const tgtLang = selectedTargetVessel ? 'ta-IN' : selectedLanguage;
 
-    // Cross-Language Translation via Sarvam Translate Proxy (/api/voice/translate)
+    // Cross-Language Translation via Google Gemini Translate Proxy (/api/voice/translate)
     const translateResult = await voiceService.translate(text, srcLang, tgtLang);
     const translatedNote = translateResult.translated_text;
 
@@ -299,19 +299,19 @@ export default function V2VRadioModule({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm font-extrabold text-white tracking-wider font-mono">
-                🎙️ V2V RADIO & SARVAM MULTILINGUAL VOICE HUB
+                🎙️ V2V RADIO & GEMINI MULTILINGUAL VOICE HUB
               </h2>
               <span className="text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/40 px-2 py-0.5 rounded font-mono font-bold">
                 CH 16 LIVE MESH
               </span>
               {isDemoMode && (
                 <span className="text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 px-2 py-0.5 rounded font-mono font-bold animate-pulse">
-                  DEMO MODE — Sarvam AI Fallback Active
+                  DEMO MODE — Gemini AI Active
                 </span>
               )}
             </div>
             <p className="text-[11px] text-cyan-300/80">
-              Sarvam STT/TTS · 9 Regional Languages · Cross-Vessel Translation · Vessel Emergency Broadcast
+              Gemini Live STT/TTS · 9 Regional Languages · Cross-Vessel Translation · Vessel Emergency Broadcast
             </p>
           </div>
         </div>
@@ -331,14 +331,14 @@ export default function V2VRadioModule({
       {/* 2. GRID: VOICE ASSISTANT (LEFT) + V2V CROSS-LANGUAGE COMMS (RIGHT) */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-4">
         
-        {/* === LEFT COLUMN: SARVAM MULTILINGUAL VOICE ASSISTANT (§5 VISIBLE STATES) === */}
+        {/* === LEFT COLUMN: GEMINI MULTILINGUAL VOICE ASSISTANT (§5 VISIBLE STATES) === */}
         <div className="lg:col-span-5 p-4 rounded-2xl bg-slate-950/90 border border-cyan-500/30 flex flex-col justify-between space-y-4">
           
           <div className="flex items-center justify-between border-b border-slate-800 pb-2">
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400 animate-pulse" />
               <span className="text-xs font-mono font-bold text-cyan-200 uppercase tracking-wider">
-                SARVAM MULTILINGUAL VOICE AI
+                GEMINI MULTILINGUAL VOICE AI
               </span>
             </div>
 
@@ -473,7 +473,7 @@ export default function V2VRadioModule({
               </span>
             </div>
             <span className="text-[10px] text-cyan-400 font-mono">
-              Sarvam Live Translation
+              Gemini Live Translation
             </span>
           </div>
 
