@@ -1,37 +1,42 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 
-const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "sk_txs4qqro_FPF9Hxl7iXvMSE8yhkr5O8vG";
+const getGenAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  return new GoogleGenerativeAI(apiKey);
+};
 
-const SARVAM_LANG_MAP: Record<string, string> = {
-  en: 'en-IN',
-  ta: 'ta-IN',
-  hi: 'hi-IN',
-  te: 'te-IN',
-  ml: 'ml-IN',
-  kn: 'kn-IN',
-  bn: 'bn-IN',
-  mr: 'mr-IN',
-  gu: 'gu-IN',
-  'en-IN': 'en-IN',
-  'ta-IN': 'ta-IN',
-  'hi-IN': 'hi-IN',
-  'te-IN': 'te-IN',
-  'ml-IN': 'ml-IN',
-  'kn-IN': 'kn-IN',
-  'bn-IN': 'bn-IN',
-  'mr-IN': 'mr-IN',
-  'gu-IN': 'gu-IN'
+const LANGUAGE_NAMES: Record<string, string> = {
+  en: 'English',
+  ta: 'Tamil (தமிழ்)',
+  hi: 'Hindi (हिंदी)',
+  te: 'Telugu (తెలుగు)',
+  ml: 'Malayalam (മലയാളം)',
+  kn: 'Kannada (ಕನ್ನಡ)',
+  bn: 'Bengali (বাংলা)',
+  mr: 'Marathi (मराठी)',
+  gu: 'Gujarati (ગુજરાતી)',
+  'en-IN': 'English',
+  'ta-IN': 'Tamil (தமிழ்)',
+  'hi-IN': 'Hindi (हिंदी)',
+  'te-IN': 'Telugu (తెలుగు)',
+  'ml-IN': 'Malayalam (മലയാളം)',
+  'kn-IN': 'Kannada (ಕನ್ನಡ)',
+  'bn-IN': 'Bengali (বাংলা)',
+  'mr-IN': 'Marathi (मराठी)',
+  'gu-IN': 'Gujarati (ગુજરાતી)'
 };
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const text = body.text || body.input || '';
-    const srcRaw = body.source_language_code || body.source_lang || 'auto';
-    const tgtRaw = body.target_language_code || body.target_lang || 'ta-IN';
+    const srcRaw = body.source_language_code || body.source_lang || 'en';
+    const tgtRaw = body.target_language_code || body.target_lang || 'ta';
 
-    const srcLang = srcRaw === 'auto' ? 'en-IN' : (SARVAM_LANG_MAP[srcRaw] || 'en-IN');
-    const tgtLang = SARVAM_LANG_MAP[tgtRaw] || 'ta-IN';
+    const srcLang = srcRaw.split('-')[0];
+    const tgtLang = tgtRaw.split('-')[0];
+    const tgtLangName = LANGUAGE_NAMES[tgtRaw] || LANGUAGE_NAMES[tgtLang] || 'Tamil';
 
     if (!text.trim()) {
       return NextResponse.json({ error: 'Text input is required' }, { status: 400 });
@@ -46,42 +51,24 @@ export async function POST(request: Request) {
       });
     }
 
-    // Call Live Sarvam Translate API (mayura:v1)
+    // Call Google Gemini 3.5 Flash for Multilingual Translation
     try {
-      const payload = {
-        input: text,
-        source_language_code: srcLang,
-        target_language_code: tgtLang,
-        mode: 'formal',
-        model: 'mayura:v1'
-      };
+      const prompt = `Translate the following maritime radio dispatch text into native ${tgtLangName} script. Output ONLY the translated text without explanations, quotes, or notes.\n\nText: "${text}"`;
+      const model = getGenAI().getGenerativeModel({ model: 'gemini-3.5-flash' });
+      const result = await model.generateContent(prompt);
+      const translatedText = result.response.text().trim();
 
-      const sarvamRes = await fetch('https://api.sarvam.ai/translate', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'api-subscription-key': SARVAM_API_KEY
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (sarvamRes.ok) {
-        const data = await sarvamRes.json();
-        if (data.translated_text) {
-          return NextResponse.json({
-            translated_text: data.translated_text,
-            source_language_code: srcLang,
-            target_language_code: tgtLang,
-            is_demo_mode: false,
-            provider: 'Sarvam AI Translate (mayura:v1)'
-          });
-        }
-      } else {
-        const errText = await sarvamRes.text();
-        console.warn('[Sarvam Translate Error]:', errText);
+      if (translatedText) {
+        return NextResponse.json({
+          translated_text: translatedText,
+          source_language_code: srcLang,
+          target_language_code: tgtLang,
+          is_demo_mode: false,
+          provider: 'Google Gemini 3.5 Flash Multilingual Translate'
+        });
       }
-    } catch (sarvamErr) {
-      console.error('[Sarvam Translate Exception]:', sarvamErr);
+    } catch (geminiErr) {
+      console.error('[Gemini Translate Error]:', geminiErr);
     }
 
     return NextResponse.json({
@@ -89,7 +76,7 @@ export async function POST(request: Request) {
       source_language_code: srcLang,
       target_language_code: tgtLang,
       is_demo_mode: true,
-      provider: 'Sarvam AI Fallback'
+      provider: 'Google Gemini Fallback'
     });
   } catch (err) {
     return NextResponse.json(

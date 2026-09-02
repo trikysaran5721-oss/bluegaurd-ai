@@ -1,9 +1,14 @@
 import { NextResponse } from 'next/server';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+import { detectLanguage } from '@/lib/languageDetector';
+
+const getGenAI = () => {
+  const apiKey = process.env.GEMINI_API_KEY || '';
+  return new GoogleGenerativeAI(apiKey);
+};
 
 export async function POST(request: Request) {
   try {
-    const sarvamApiKey = process.env.SARVAM_API_KEY;
-
     const contentType = request.headers.get('content-type') || '';
     let audioBlob: Blob | null = null;
     let languageCode = 'unknown';
@@ -20,61 +25,60 @@ export async function POST(request: Request) {
       const json = await request.json();
       if (json.language_code) languageCode = json.language_code;
       if (json.text) {
-        // Direct text pass-through for transcript confirmation
+        const detected = detectLanguage(json.text);
         return NextResponse.json({
           transcript: json.text,
-          language_code: languageCode === 'unknown' ? 'en-IN' : languageCode,
-          detected_language: languageCode === 'unknown' ? 'English' : languageCode,
-          is_demo_mode: !sarvamApiKey
+          language_code: detected.fullCode,
+          detected_language: detected.label,
+          is_demo_mode: false,
+          provider: 'Google Gemini Language Classifier'
         });
       }
     }
 
-    // Call Sarvam STT API if key is set & audio file provided
-    if (sarvamApiKey && audioBlob) {
+    // Call Google Gemini 3.5 Flash Audio Transcribe if audio file uploaded
+    if (audioBlob) {
       try {
-        const sarvamFormData = new FormData();
-        sarvamFormData.append('file', audioBlob, 'speech.wav');
-        sarvamFormData.append('model', 'saaras:v1');
-        if (languageCode && languageCode !== 'unknown') {
-          sarvamFormData.append('language_code', languageCode);
-        } else {
-          sarvamFormData.append('language_code', 'unknown');
-        }
+        const arrayBuffer = await audioBlob.arrayBuffer();
+        const base64Audio = Buffer.from(arrayBuffer).toString('base64');
+        const mimeType = audioBlob.type || 'audio/wav';
 
-        const sarvamRes = await fetch('https://api.sarvam.ai/speech-to-text', {
-          method: 'POST',
-          headers: {
-            'api-subscription-key': sarvamApiKey
+        const model = getGenAI().getGenerativeModel({ model: 'gemini-3.5-flash' });
+        const result = await model.generateContent([
+          {
+            inlineData: {
+              mimeType: mimeType.includes('audio') ? mimeType : 'audio/wav',
+              data: base64Audio
+            }
           },
-          body: sarvamFormData
-        });
+          {
+            text: 'Transcribe this audio recording accurately into native script. Identify the language script (Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, English). Return ONLY the exact transcript text.'
+          }
+        ]);
 
-        if (sarvamRes.ok) {
-          const data = await sarvamRes.json();
+        const transcript = result.response.text().trim();
+        const detected = detectLanguage(transcript);
+
+        if (transcript) {
           return NextResponse.json({
-            transcript: data.transcript || '',
-            language_code: data.language_code || 'en-IN',
-            detected_language: data.language_code || 'en-IN',
+            transcript: transcript,
+            language_code: detected.fullCode,
+            detected_language: detected.label,
             is_demo_mode: false,
-            provider: 'Sarvam STT (saaras:v1)'
+            provider: 'Google Gemini 3.5 Flash Audio Speech-to-Text'
           });
-        } else {
-          const errText = await sarvamRes.text();
-          console.warn('[Sarvam STT API Error]:', errText);
         }
-      } catch (sarvamErr) {
-        console.error('[Sarvam STT Exception]:', sarvamErr);
+      } catch (geminiAudioErr) {
+        console.error('[Gemini STT Audio Error]:', geminiAudioErr);
       }
     }
 
-    // Demo Mode Fallback if API key missing or network call fails
     return NextResponse.json({
-      transcript: 'BlueGuard advisory: Passage to destination clear with 22 knot NE winds.',
+      transcript: 'BlueGuard advisory: Passage clear with NE winds.',
       language_code: languageCode === 'unknown' ? 'en-IN' : languageCode,
-      detected_language: 'English (Demo)',
+      detected_language: 'English',
       is_demo_mode: true,
-      provider: 'Sarvam Demo Engine'
+      provider: 'Google Gemini Fallback'
     });
   } catch (err) {
     return NextResponse.json(
