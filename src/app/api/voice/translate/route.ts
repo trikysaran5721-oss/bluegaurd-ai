@@ -1,79 +1,87 @@
 import { NextResponse } from 'next/server';
-import { execSync } from 'child_process';
-import path from 'path';
+
+const SARVAM_API_KEY = process.env.SARVAM_API_KEY || "sk_txs4qqro_FPF9Hxl7iXvMSE8yhkr5O8vG";
+
+const SARVAM_LANG_MAP: Record<string, string> = {
+  en: 'en-IN',
+  ta: 'ta-IN',
+  hi: 'hi-IN',
+  te: 'te-IN',
+  ml: 'ml-IN',
+  kn: 'kn-IN',
+  bn: 'bn-IN',
+  mr: 'mr-IN',
+  gu: 'gu-IN',
+  'en-IN': 'en-IN',
+  'ta-IN': 'ta-IN',
+  'hi-IN': 'hi-IN',
+  'te-IN': 'te-IN',
+  'ml-IN': 'ml-IN',
+  'kn-IN': 'kn-IN',
+  'bn-IN': 'bn-IN',
+  'mr-IN': 'mr-IN',
+  'gu-IN': 'gu-IN'
+};
 
 export async function POST(request: Request) {
   try {
-    const sarvamApiKey = process.env.SARVAM_API_KEY || "sk_txs4qqro_FPF9Hxl7iXvMSE8yhkr5O8vG";
     const body = await request.json();
     const text = body.text || body.input || '';
-    const srcLang = body.source_language_code || body.source_lang || 'auto';
-    const tgtLang = body.target_language_code || body.target_lang || 'ta-IN';
+    const srcRaw = body.source_language_code || body.source_lang || 'auto';
+    const tgtRaw = body.target_language_code || body.target_lang || 'ta-IN';
+
+    const srcLang = srcRaw === 'auto' ? 'en-IN' : (SARVAM_LANG_MAP[srcRaw] || 'en-IN');
+    const tgtLang = SARVAM_LANG_MAP[tgtRaw] || 'ta-IN';
 
     if (!text.trim()) {
       return NextResponse.json({ error: 'Text input is required' }, { status: 400 });
     }
 
-    // 1. Try python sarvamai SDK first
-    try {
-      const scriptPath = path.join(process.cwd(), 'scripts', 'sarvam_bridge.py');
-      const inputJson = JSON.stringify({ input: text, source_language_code: srcLang, target_language_code: tgtLang });
-      const command = `python "${scriptPath}" translate`;
-      const output = execSync(command, {
-        input: inputJson,
-        env: { ...process.env, SARVAM_API_KEY: sarvamApiKey },
-        encoding: 'utf-8',
-        timeout: 8000
+    if (srcLang === tgtLang) {
+      return NextResponse.json({
+        translated_text: text,
+        source_language_code: srcLang,
+        target_language_code: tgtLang,
+        is_demo_mode: false
       });
-      const parsed = JSON.parse(output.trim());
-      if (parsed.translated_text) {
-        return NextResponse.json({
-          translated_text: parsed.translated_text,
-          source_language_code: srcLang,
-          target_language_code: tgtLang,
-          is_demo_mode: false,
-          provider: parsed.provider || 'SarvamAI Python SDK 0.1.31a4 (mayura)'
-        });
-      }
-    } catch (sdkErr) {
-      console.warn('Sarvam Python SDK translate fallback to REST:', sdkErr);
     }
 
-    // 2. HTTP REST Fallback
-    if (sarvamApiKey) {
-      try {
-        const payload = {
-          input: text,
-          source_language_code: srcLang === 'auto' ? 'en-IN' : srcLang,
-          target_language_code: tgtLang,
-          speaker_gender: 'Female',
-          mode: 'formal',
-          model: 'mayura:v1',
-          enable_preprocessing: true
-        };
+    // Call Live Sarvam Translate API (mayura:v1)
+    try {
+      const payload = {
+        input: text,
+        source_language_code: srcLang,
+        target_language_code: tgtLang,
+        mode: 'formal',
+        model: 'mayura:v1'
+      };
 
-        const sarvamRes = await fetch('https://api.sarvam.ai/translate', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-subscription-key': sarvamApiKey
-          },
-          body: JSON.stringify(payload)
-        });
+      const sarvamRes = await fetch('https://api.sarvam.ai/translate', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api-subscription-key': SARVAM_API_KEY
+        },
+        body: JSON.stringify(payload)
+      });
 
-        if (sarvamRes.ok) {
-          const data = await sarvamRes.json();
+      if (sarvamRes.ok) {
+        const data = await sarvamRes.json();
+        if (data.translated_text) {
           return NextResponse.json({
-            translated_text: data.translated_text || text,
+            translated_text: data.translated_text,
             source_language_code: srcLang,
             target_language_code: tgtLang,
             is_demo_mode: false,
-            provider: 'Sarvam REST API (mayura:v1)'
+            provider: 'Sarvam AI Translate (mayura:v1)'
           });
         }
-      } catch (err) {
-        console.warn('Sarvam Translate REST call failed:', err);
+      } else {
+        const errText = await sarvamRes.text();
+        console.warn('[Sarvam Translate Error]:', errText);
       }
+    } catch (sarvamErr) {
+      console.error('[Sarvam Translate Exception]:', sarvamErr);
     }
 
     return NextResponse.json({
@@ -81,7 +89,7 @@ export async function POST(request: Request) {
       source_language_code: srcLang,
       target_language_code: tgtLang,
       is_demo_mode: true,
-      provider: 'Sarvam Demo Translate Engine'
+      provider: 'Sarvam AI Fallback'
     });
   } catch (err) {
     return NextResponse.json(
