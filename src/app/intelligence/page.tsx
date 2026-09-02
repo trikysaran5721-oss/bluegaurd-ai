@@ -20,6 +20,7 @@ import {
   DEMO_PORTS
 } from '@/lib/marineData';
 import { audioService } from '@/lib/audioService';
+import { voiceService } from '@/lib/voiceService';
 import {
   Sparkles,
   Thermometer,
@@ -88,9 +89,8 @@ export default function MarineIntelligencePage() {
   };
 
   const handleVoiceQuery = async (queryText: string) => {
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     try {
-      const res = await fetch(`${apiUrl}/api/agent`, {
+      const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -102,18 +102,14 @@ export default function MarineIntelligencePage() {
 
       if (res.ok) {
         const data = await res.json();
-        audioService.speak(data.answer, data.language);
+        voiceService.synthesize(data.answer, data.language || 'ta-IN');
       } else {
-        audioService.speak(
-          "BlueGuard Intelligence: Current sea-surface temperature varies between 28.5°C and 30.1°C with medium chlorophyll levels.",
-          userProfile?.preferred_language || 'en'
-        );
+        const fallbackText = "BlueGuard Intelligence: Current sea-surface temperature varies between 28.5°C and 30.1°C with medium chlorophyll levels.";
+        voiceService.synthesize(fallbackText, userProfile?.preferred_language || 'en');
       }
     } catch {
-      audioService.speak(
-        "BlueGuard Intelligence: Current sea-surface temperature varies between 28.5°C and 30.1°C with medium chlorophyll levels.",
-        userProfile?.preferred_language || 'en'
-      );
+      const fallbackText = "BlueGuard Intelligence: Current sea-surface temperature varies between 28.5°C and 30.1°C with medium chlorophyll levels.";
+      voiceService.synthesize(fallbackText, userProfile?.preferred_language || 'en');
     }
   };
 

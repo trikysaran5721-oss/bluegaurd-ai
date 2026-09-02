@@ -7,6 +7,7 @@ import EmergencyOverlay from '@/components/EmergencyOverlay';
 import { demoStorage } from '@/lib/supabase';
 import { ShipProfile } from '@/lib/types';
 import { audioService } from '@/lib/audioService';
+import { voiceService } from '@/lib/voiceService';
 import { Mic, Sparkles, Volume2, Bot, User, ShieldCheck, Send, AlertOctagon } from 'lucide-react';
 
 interface ChatMessage {
@@ -82,9 +83,8 @@ export default function AssistantPage() {
       return;
     }
 
-    const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
     try {
-      const res = await fetch(`${apiUrl}/api/agent`, {
+      const res = await fetch('/api/agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -104,7 +104,7 @@ export default function AssistantPage() {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages((prev) => [...prev, agentMsg]);
-        audioService.speak(data.answer, data.language);
+        voiceService.synthesize(data.answer, data.language || 'ta-IN');
       } else {
         const fallbackText = "BlueGuard Report: Current weather along your route indicates 22 knot NE winds with 2.1m wave height. Proceed under CAUTION status.";
         const agentMsg: ChatMessage = {
@@ -115,7 +115,7 @@ export default function AssistantPage() {
           timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
         setMessages((prev) => [...prev, agentMsg]);
-        audioService.speak(fallbackText, userProfile?.preferred_language || 'en');
+        voiceService.synthesize(fallbackText, userProfile?.preferred_language || 'en');
       }
     } catch {
       const fallbackText = "BlueGuard Report: Current weather along your route indicates 22 knot NE winds with 2.1m wave height. Proceed under CAUTION status.";
@@ -127,7 +127,7 @@ export default function AssistantPage() {
         timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
       };
       setMessages((prev) => [...prev, agentMsg]);
-      audioService.speak(fallbackText, userProfile?.preferred_language || 'en');
+      voiceService.synthesize(fallbackText, userProfile?.preferred_language || 'en');
     } finally {
       setIsProcessing(false);
     }
