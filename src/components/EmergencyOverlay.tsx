@@ -87,8 +87,8 @@ export default function EmergencyOverlay({ currentShip, onAlertAcknowledged }: E
   }, [currentShip, activeReceivedAlert]);
 
   const handleEnableAudio = () => {
-    const success = audioService.unlockAudioContext();
-    setAudioBlocked(!success);
+    audioService.unlockAudioContext();
+    setAudioBlocked(audioService.isContextSuspended());
     audioService.playEmergencyAlarm();
     if (activeReceivedAlert) {
       audioService.speak(`Emergency alert received from ship ${activeReceivedAlert.sender_ship_id}`, 'en');
