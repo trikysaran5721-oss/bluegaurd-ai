@@ -133,10 +133,10 @@ class VoiceService {
     };
   }
 
-  public playBase64Audio(base64Wav: string) {
+  public playBase64Audio(base64Mp3: string) {
     try {
       this.stopPlayback();
-      const audioUrl = `data:audio/wav;base64,${base64Wav}`;
+      const audioUrl = `data:audio/mpeg;base64,${base64Mp3}`;
       const audio = new Audio(audioUrl);
       this.activeAudioElement = audio;
       audio.play().catch((err) => {

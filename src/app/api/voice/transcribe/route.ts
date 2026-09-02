@@ -11,6 +11,13 @@ const getGenAI = () => {
   return new GoogleGenerativeAI(getGeminiKey());
 };
 
+const GEMINI_AUDIO_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash'
+];
+
 export async function POST(request: Request) {
   try {
     const contentType = request.headers.get('content-type') || '';
@@ -40,40 +47,43 @@ export async function POST(request: Request) {
       }
     }
 
-    // Call Google Gemini 3.5 Flash Audio Transcribe if audio file uploaded
+    // Call Google Gemini Audio Transcribe with multi-model fallback
     if (audioBlob) {
-      try {
-        const arrayBuffer = await audioBlob.arrayBuffer();
-        const base64Audio = Buffer.from(arrayBuffer).toString('base64');
-        const mimeType = audioBlob.type || 'audio/wav';
+      const arrayBuffer = await audioBlob.arrayBuffer();
+      const base64Audio = Buffer.from(arrayBuffer).toString('base64');
+      const mimeType = audioBlob.type || 'audio/wav';
 
-        const model = getGenAI().getGenerativeModel({ model: 'gemini-3.5-flash' });
-        const result = await model.generateContent([
-          {
-            inlineData: {
-              mimeType: mimeType.includes('audio') ? mimeType : 'audio/wav',
-              data: base64Audio
+      const genAI = getGenAI();
+
+      for (const modelName of GEMINI_AUDIO_MODELS) {
+        try {
+          const model = genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent([
+            {
+              inlineData: {
+                mimeType: mimeType.includes('audio') ? mimeType : 'audio/wav',
+                data: base64Audio
+              }
+            },
+            {
+              text: 'Transcribe this audio recording accurately into native script. Identify the language (Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, English). Return ONLY the exact transcript text.'
             }
-          },
-          {
-            text: 'Transcribe this audio recording accurately into native script. Identify the language script (Tamil, Hindi, Telugu, Malayalam, Kannada, Bengali, Marathi, Gujarati, English). Return ONLY the exact transcript text.'
+          ]);
+
+          const transcript = result.response.text().trim();
+          if (transcript) {
+            const detected = detectLanguage(transcript);
+            return NextResponse.json({
+              transcript: transcript,
+              language_code: detected.fullCode,
+              detected_language: detected.label,
+              is_demo_mode: false,
+              provider: `Google Gemini Multilingual STT (${modelName})`
+            });
           }
-        ]);
-
-        const transcript = result.response.text().trim();
-        const detected = detectLanguage(transcript);
-
-        if (transcript) {
-          return NextResponse.json({
-            transcript: transcript,
-            language_code: detected.fullCode,
-            detected_language: detected.label,
-            is_demo_mode: false,
-            provider: 'Google Gemini 3.5 Flash Audio Speech-to-Text'
-          });
+        } catch (geminiAudioErr) {
+          console.warn(`[Gemini STT Model ${modelName} Warning]:`, geminiAudioErr);
         }
-      } catch (geminiAudioErr) {
-        console.error('[Gemini STT Audio Error]:', geminiAudioErr);
       }
     }
 

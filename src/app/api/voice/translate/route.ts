@@ -10,6 +10,13 @@ const getGenAI = () => {
   return new GoogleGenerativeAI(getGeminiKey());
 };
 
+const GEMINI_TRANSLATE_MODELS = [
+  'gemini-3.5-flash-lite',
+  'gemini-3.1-flash-lite',
+  'gemini-1.5-flash',
+  'gemini-3.5-flash'
+];
+
 const LANGUAGE_NAMES: Record<string, string> = {
   en: 'English',
   ta: 'Tamil (தமிழ்)',
@@ -55,24 +62,28 @@ export async function POST(request: Request) {
       });
     }
 
-    // Call Google Gemini 3.5 Flash for Multilingual Translation
-    try {
-      const prompt = `Translate the following maritime radio dispatch text into native ${tgtLangName} script. Output ONLY the translated text without explanations, quotes, or notes.\n\nText: "${text}"`;
-      const model = getGenAI().getGenerativeModel({ model: 'gemini-3.5-flash' });
-      const result = await model.generateContent(prompt);
-      const translatedText = result.response.text().trim();
+    // Call Google Gemini Multilingual Translate with multi-model fallback
+    const genAI = getGenAI();
+    const prompt = `Translate the following maritime radio dispatch text into native ${tgtLangName} script. Output ONLY the translated text without explanations, quotes, or notes.\n\nText: "${text}"`;
 
-      if (translatedText) {
-        return NextResponse.json({
-          translated_text: translatedText,
-          source_language_code: srcLang,
-          target_language_code: tgtLang,
-          is_demo_mode: false,
-          provider: 'Google Gemini 3.5 Flash Multilingual Translate'
-        });
+    for (const modelName of GEMINI_TRANSLATE_MODELS) {
+      try {
+        const model = genAI.getGenerativeModel({ model: modelName });
+        const result = await model.generateContent(prompt);
+        const translatedText = result.response.text().trim();
+
+        if (translatedText) {
+          return NextResponse.json({
+            translated_text: translatedText,
+            source_language_code: srcLang,
+            target_language_code: tgtLang,
+            is_demo_mode: false,
+            provider: `Google Gemini Multilingual Translate (${modelName})`
+          });
+        }
+      } catch (geminiErr) {
+        console.warn(`[Gemini Translate Model ${modelName} Warning]:`, geminiErr);
       }
-    } catch (geminiErr) {
-      console.error('[Gemini Translate Error]:', geminiErr);
     }
 
     return NextResponse.json({
