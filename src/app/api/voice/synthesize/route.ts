@@ -28,17 +28,33 @@ async function fetchAudioStream(text: string, lang: string): Promise<Buffer | nu
 
     const shortLang = LANG_MAP[lang] || lang.split('-')[0] || 'en';
     const encodedText = encodeURIComponent(cleanText);
-    const googleTtsUrl = `https://translate.google.com/translate_tts?ie=UTF-8&tl=${shortLang}&client=tw-ob&q=${encodedText}`;
 
-    const res = await fetch(googleTtsUrl, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
+    const endpoints = [
+      `https://translate.google.com/translate_tts?ie=UTF-8&tl=${shortLang}&client=gtx&q=${encodedText}`,
+      `https://translate.google.com/translate_tts?ie=UTF-8&tl=${shortLang}&client=tw-ob&q=${encodedText}`,
+      `https://translate.googleapis.com/translate_tts?client=gtx&ie=UTF-8&tl=${shortLang}&q=${encodedText}`
+    ];
+
+    for (const endpoint of endpoints) {
+      try {
+        const res = await fetch(endpoint, {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'Accept': 'audio/mpeg, audio/*;q=0.9, */*;q=0.8',
+            'Referer': 'https://translate.google.com/'
+          }
+        });
+
+        if (res.ok) {
+          const arrayBuffer = await res.arrayBuffer();
+          const buf = Buffer.from(arrayBuffer);
+          if (buf.length > 100) {
+            return buf;
+          }
+        }
+      } catch (err) {
+        console.warn(`[TTS Proxy Endpoint Warning ${endpoint}]:`, err);
       }
-    });
-
-    if (res.ok) {
-      const arrayBuffer = await res.arrayBuffer();
-      return Buffer.from(arrayBuffer);
     }
   } catch (err) {
     console.warn('[TTS Proxy Fetch Error]:', err);
