@@ -114,18 +114,8 @@ export default function Navigation({
             })}
           </nav>
 
-          {/* Right Controls: V to V Radio Button, Ship ID, Status, Language, Logout */}
+          {/* Right Controls: Ship ID, Status, Language, Logout */}
           <div className="flex items-center gap-3">
-            
-            {/* V to V (Vessel to Vessel Radio) Button */}
-            <button
-              onClick={() => setIsV2VOpen(true)}
-              className="px-3 py-1.5 bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white rounded-xl text-xs font-bold shadow-lg shadow-cyan-950 flex items-center gap-1.5 border border-cyan-400/40 transition transform active:scale-95"
-            >
-              <RadioTower className="w-4 h-4 text-cyan-200 animate-pulse" />
-              <span>V to V Radio</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-            </button>
 
             {/* Ship ID Badge */}
             {userProfile?.ship_id && (
